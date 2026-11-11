@@ -57,13 +57,13 @@ internal static class BlueGreenStrategyTests
             }),
             ("A target mortgage offer includes its mandatory fees in affordability", () =>
             {
-                var option = Buy("pacific-avenue") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 315 };
-                var e = Engine(314, 31, [], [option], ["pacific-avenue"]);
+                var option = Buy("pacific-avenue") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 165 };
+                var e = Engine(164, 31, [], [option], ["pacific-avenue"]);
                 e.State = e.State with { Properties = e.State.Properties.Select(p => p.PropertyId == "pacific-avenue" ? p with { IsMortgaged = true } : p).ToArray() };
                 var strategy = new BlueGreenStrategy(e);
                 strategy.PostRoll(e.Player, e.State)();
                 Check(e.Executed.Count == 0, "Ignored the total mortgage acquisition cost.");
-                e.Player = e.Player with { CashBalance = 315 };
+                e.Player = e.Player with { CashBalance = 165 };
                 strategy.PostRoll(e.Player, e.State)();
                 Check(e.Player.CashBalance == 0 && e.Player.OwnedPropertyIds.Contains("pacific-avenue"), "Refused an exactly affordable mortgage acquisition.");
             }),
@@ -74,9 +74,9 @@ internal static class BlueGreenStrategyTests
             }),
             ("A cash sale can restore a depleted pre-arrival reserve", () =>
             {
-                var sale = Trade(Deal(["oriental-avenue"], [], receivedCash: 60));
+                var sale = Trade(Deal(["oriental-avenue"], [], receivedCash: 100));
                 var e = Run(350, 6, ["oriental-avenue"], [sale, Buy("mediterranean-avenue")]);
-                Check(e.Executed.SequenceEqual(["trade"]) && e.Player.CashBalance == 410, "Did not restore cash or immediately spent the reserve again.");
+                Check(e.Executed.SequenceEqual(["trade"]) && e.Player.CashBalance == 450, "Did not restore cash or immediately spent the reserve again.");
             }),
             ("Returning past GO restores the pre-arrival cash rule", () =>
             {
@@ -105,8 +105,8 @@ internal static class BlueGreenStrategyTests
             }),
             ("Owning Short Line with the targets unlocks later mortgage purchases", () =>
             {
-                var option = Buy("oriental-avenue") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 105 };
-                var e = Engine(105, 6, [.. Targets, "short-line"], [option], ["oriental-avenue"]);
+                var option = Buy("oriental-avenue") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 55 };
+                var e = Engine(55, 6, [.. Targets, "short-line"], [option], ["oriental-avenue"]);
                 e.State = e.State with { Properties = e.State.Properties.Select(p => p.PropertyId == "oriental-avenue" ? p with { IsMortgaged = true } : p).ToArray() };
                 new BlueGreenStrategy(e).PostRoll(e.Player, e.State)();
                 Check(e.Player.OwnedPropertyIds.Contains("oriental-avenue"), "Did not inherit expansion after contained ownership.");

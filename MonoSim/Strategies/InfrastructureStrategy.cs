@@ -1,4 +1,5 @@
 using MonoSim.Models;
+using MonoSim.Trading;
 
 namespace MonoSim.Strategies;
 
@@ -32,6 +33,10 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
             var next = first;
             while (next is not null)
             {
+                if (TradeValidator.IsTradeAction(next) && !TradeValidator.ValidateAction(currentPlayer, currentState, next).IsValid)
+                {
+                    throw new InvalidOperationException("The trade is no longer valid for the current state.");
+                }
                 var updated = executor.Execute(currentPlayer.Id, next);
                 if (updated.Player.Id != player.Id || updated.Player.CashBalance != currentPlayer.CashBalance - next.Cost ||
                     updated.GameState.TurnNumber != state.TurnNumber)
@@ -74,6 +79,10 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
 
     private static StrategyAction? SelectAction(Player player, GameState state, bool preRoll)
     {
+        if (TradeSafetyAdvisor.DebtDue(player, state) > 0)
+        {
+            return TradeSafetyAdvisor.FindDebtFundingTrade(player, state);
+        }
         var owned = player.OwnedPropertyIds.ToHashSet(StringComparer.Ordinal);
         if (player.IsInJail)
         {
@@ -126,7 +135,7 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
                 }
 
                 if (action.Type == StrategyActionType.BuyMortgagedProperty && (!property.IsOwned || !property.IsMortgaged ||
-                    !state.OtherPlayers.Any(p => p.OwnedPropertyIds.Contains(property.PropertyId))))
+                    !TradeValidator.ValidateAction(player, state, action).IsValid))
                 {
                     return null;
                 }
@@ -213,6 +222,14 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
     {
         after = new HashSet<string>(owned, StringComparer.Ordinal);
         var trade = action.Trade;
+        if (trade is null || !TradeValidator.ValidateAction(player, state, action).IsValid)
+        {
+            return false;
+        }
+        if (!TradeSafetyAdvisor.ShouldConsiderAction(player, state, action))
+        {
+            return false;
+        }
         if (trade is null || action.Cost != trade.NetCost || trade.CashPaid < 0 || trade.CashReceived < 0 || trade.BankFees < 0 ||
             trade.PropertyIdsGiven.Length + trade.PropertyIdsReceived.Length == 0 ||
             trade.PropertyIdsGiven.Distinct().Count() != trade.PropertyIdsGiven.Length ||

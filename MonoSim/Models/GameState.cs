@@ -1,4 +1,5 @@
 using MonoSim.Strategies;
+using MonoSim.Trading;
 
 namespace MonoSim.Models;
 
@@ -10,6 +11,27 @@ public sealed record GameState
 
     /// <summary>Number of spaces on the board, used for clockwise distance calculations.</summary>
     public int BoardSize { get; init; } = 40;
+
+    public decimal BuildingResaleFraction { get; init; } = 0.5m;
+
+    public decimal MortgageInterestRate { get; init; } = 0.1m;
+
+    public decimal GetOutOfJailFreeCardTradeValue { get; init; } = 50m;
+
+    public int DiceCount { get; init; } = 2;
+
+    public int DiceSides { get; init; } = 6;
+
+    /// <summary>Executed trades in the current full turn, including either participant's transfers.</summary>
+    public CompletedTrade[] CompletedTrades { get; init; } = [];
+
+    /// <summary>Original offers retained while their counteroffer negotiations remain open.</summary>
+    public TradeOffer[] TradeOffers { get; init; } = [];
+
+    /// <summary>Cash obligations that trades cannot settle or waive.</summary>
+    public RentObligation[] RentObligations { get; init; } = [];
+
+    public CashObligation[] CashObligations { get; init; } = [];
 
     /// <summary>Every purchasable board property, including railroads and utilities.</summary>
     public PropertyState[] Properties { get; init; } = [];

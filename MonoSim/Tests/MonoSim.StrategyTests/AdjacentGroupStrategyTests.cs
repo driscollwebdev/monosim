@@ -60,7 +60,7 @@ internal static class AdjacentGroupStrategyTests
             }),
             ("Leverage trades can acquire a target street", () =>
             {
-                var e = Run(500, 9, ["oriental-avenue", "kentucky-avenue"], [Trade(Deal(["kentucky-avenue"], ["st-charles-place"]))], ["st-charles-place"]);
+                var e = Run(500, 9, ["oriental-avenue", "kentucky-avenue"], [Trade(Deal(["kentucky-avenue"], ["st-charles-place"], receivedCash: 80))], ["st-charles-place"]);
                 Check(e.Player.OwnedPropertyIds.Contains("st-charles-place") && !e.Player.OwnedPropertyIds.Contains("kentucky-avenue"), "Did not use leverage for the target.");
             }),
             ("Neither target group can be traded away", () =>
@@ -142,7 +142,7 @@ internal static class AdjacentGroupStrategyTests
             }),
             ("Full improvement of just one group does not unlock expansion", () =>
             {
-                var option = Buy("mediterranean-avenue") with { Type = StrategyActionType.BuyMortgagedProperty };
+                var option = Buy("mediterranean-avenue") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 33 };
                 var e = Engine(500, 1, Pair("lightBlue", "pink"), [option], ["mediterranean-avenue"]);
                 e.State = e.State with { Properties = e.State.Properties.Select(p => p.PropertyId == "mediterranean-avenue" ? p with { IsMortgaged = true } : p).ToArray() };
                 Hotels(e, "lightBlue");
@@ -151,7 +151,7 @@ internal static class AdjacentGroupStrategyTests
             }),
             ("A pair without contained infrastructure can finish by hotel development", () =>
             {
-                var option = Buy("mediterranean-avenue") with { Type = StrategyActionType.BuyMortgagedProperty };
+                var option = Buy("mediterranean-avenue") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 33 };
                 var e = Engine(500, 1, Pair("orange", "red"), [option], ["mediterranean-avenue"]);
                 e.State = e.State with { Properties = e.State.Properties.Select(p => p.PropertyId == "mediterranean-avenue" ? p with { IsMortgaged = true } : p).ToArray() };
                 new AdjacentGroupStrategy(e).PostRoll(e.Player, e.State)();
@@ -162,7 +162,7 @@ internal static class AdjacentGroupStrategyTests
             }),
             ("Mortgaged target properties can be acquired through accepted offers", () =>
             {
-                var option = Buy("st-charles-place") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 150 };
+                var option = Buy("st-charles-place") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 77 };
                 var e = Engine(500, 9, ["oriental-avenue"], [option], ["st-charles-place"]);
                 e.State = e.State with { Properties = e.State.Properties.Select(p => p.PropertyId == "st-charles-place" ? p with { IsMortgaged = true } : p).ToArray() };
                 new AdjacentGroupStrategy(e).PostRoll(e.Player, e.State)();

@@ -26,8 +26,9 @@ public sealed record StrategyAction
     public PropertyTrade? Trade { get; init; }
 
     /// <summary>
-    /// A seller-approved exchange contingent on buying this landing property.
-    /// After purchase, the engine must expose it as a legal TradeProperties option.
+    /// A nonbinding local plan evaluated as if this landing property had been bought.
+    /// It cannot be published or accepted until the property is actually owned;
+    /// execution requires a fresh, valid, accepted TradeProperties offer.
     /// </summary>
     public PropertyTrade? FollowUpTrade { get; init; }
 }

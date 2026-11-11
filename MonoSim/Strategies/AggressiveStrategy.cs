@@ -1,4 +1,5 @@
 using MonoSim.Models;
+using MonoSim.Trading;
 
 namespace MonoSim.Strategies;
 
@@ -22,9 +23,14 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
         return () =>
         {
             var currentPlayer = player;
+            var currentState = gameState;
             var next = first;
             while (next is not null)
             {
+                if (TradeValidator.IsTradeAction(next) && !TradeValidator.ValidateAction(currentPlayer, currentState, next).IsValid)
+                {
+                    throw new InvalidOperationException("The trade is no longer valid for the current state.");
+                }
                 var updated = executor.Execute(currentPlayer.Id, next);
                 if (updated.Player.Id != currentPlayer.Id ||
                     updated.Player.CashBalance != currentPlayer.CashBalance - next.Cost)
@@ -43,6 +49,7 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
                 }
 
                 currentPlayer = updated.Player;
+                currentState = updated.GameState;
                 next = SelectAction(currentPlayer, updated.GameState, preRoll);
             }
         };
@@ -50,6 +57,10 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
 
     private static StrategyAction? SelectAction(Player player, GameState state, bool preRoll)
     {
+        if (TradeSafetyAdvisor.DebtDue(player, state) > 0)
+        {
+            return TradeSafetyAdvisor.FindDebtFundingTrade(player, state);
+        }
         if (player.IsInJail)
         {
             // Release before the next roll. Do not spend the release money after being jailed.
@@ -70,7 +81,11 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
         }
 
         return state.AvailableActions
-            .Where(a => a.Cost > 0 && a.Cost <= player.CashBalance && IsInvestment(a.Type))
+            .Where(a => a.Cost <= player.CashBalance && IsInvestment(a.Type) &&
+                (a.Cost > 0 || a.Type == StrategyActionType.TradeProperties) &&
+                (!TradeValidator.IsTradeAction(a) || TradeValidator.ValidateAction(player, state, a).IsValid) &&
+                TradeSafetyAdvisor.ShouldConsiderAction(player, state, a) &&
+                (a.Type != StrategyActionType.TradeProperties || a.Trade!.PropertyIdsReceived.Length > a.Trade.PropertyIdsGiven.Length))
             .OrderBy(Priority)
             .ThenByDescending(a => IsPurchase(a.Type) ? 0 : a.RentIncrease / a.Cost)
             .ThenBy(a => a.Cost)
@@ -79,7 +94,7 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
     }
 
     private static bool IsPurchase(StrategyActionType type) =>
-        type is StrategyActionType.BuyProperty or StrategyActionType.BuyMortgagedProperty;
+        type is StrategyActionType.BuyProperty or StrategyActionType.BuyMortgagedProperty or StrategyActionType.TradeProperties;
 
     private static bool IsInvestment(StrategyActionType type) =>
         IsPurchase(type) || type is StrategyActionType.UnmortgageProperty or
@@ -89,6 +104,7 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
     {
         StrategyActionType.BuyProperty => 0,
         StrategyActionType.BuyMortgagedProperty => 1,
+        StrategyActionType.TradeProperties => 1,
         _ => 2
     };
 }

@@ -11,6 +11,15 @@ public sealed record PropertyState
     /// <summary>The printed purchase price from the game definition.</summary>
     public required decimal SalePrice { get; init; }
 
+    public decimal MortgageValue { get; init; }
+
+    public decimal HousePrice { get; init; }
+
+    /// <summary>The additional price to replace four houses with a hotel.</summary>
+    public decimal HotelPrice { get; init; }
+
+    public PropertyRent? Rent { get; init; }
+
     public PropertyType Type { get; init; }
 
     /// <summary>The space's zero-based position in the game definition.</summary>

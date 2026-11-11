@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MonoSim.Models;
 using MonoSim.Strategies;
+using MonoSim.Trading;
 
 internal static class InfrastructureStrategyTests
 {
@@ -58,8 +59,10 @@ internal static class InfrastructureStrategyTests
             }),
             ("A mortgage trade's bank fees count against the reserve", () =>
             {
-                var deal = Deal(["oriental-avenue"], ["reading-railroad"], paid: 100, fees: 10);
-                var e = Run(250, 9, ["oriental-avenue"], [Trade(deal)], ["reading-railroad"]);
+                var deal = Deal(["oriental-avenue"], ["reading-railroad"], fees: 10);
+                var e = Engine(159, 9, ["oriental-avenue"], [Trade(deal)], ["reading-railroad"]);
+                e.State = e.State with { Properties = e.State.Properties.Select(p => p.PropertyId == "reading-railroad" ? p with { IsMortgaged = true } : p).ToArray() };
+                new InfrastructureStrategy(e).PostRoll(e.Player, e.State)();
                 Check(e.Executed.Count == 0, "Ignored mandatory transfer interest.");
             }),
             ("Infrastructure is never surrendered as trade leverage", () =>
@@ -78,9 +81,9 @@ internal static class InfrastructureStrategyTests
             }),
             ("A cash sale can help restore an already depleted reserve", () =>
             {
-                var sale = Trade(Deal(["oriental-avenue"], [], receivedCash: 50));
+                var sale = Trade(Deal(["oriental-avenue"], [], receivedCash: 100));
                 var e = Run(50, 9, ["oriental-avenue"], [sale, Buy("vermont-avenue")]);
-                Check(e.Executed.SequenceEqual(["trade"]) && e.Player.CashBalance == 100, "Did not restore cash without further discretionary spending.");
+                Check(e.Executed.SequenceEqual(["trade"]) && e.Player.CashBalance == 150, "Did not restore cash without further discretionary spending.");
             }),
             ("No bank reserve is needed when all infrastructure is already owned by someone", () =>
             {
@@ -89,7 +92,7 @@ internal static class InfrastructureStrategyTests
             }),
             ("An infrastructure monopoly permits mortgage acquisitions of color properties", () =>
             {
-                var action = Buy("oriental-avenue") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 110 };
+                var action = Buy("oriental-avenue") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 55 };
                 var e = Engine(500, 9, Infrastructure, [action], ["oriental-avenue"]);
                 e.State = e.State with { Properties = e.State.Properties.Select(p => p.PropertyId == "oriental-avenue" ? p with { IsMortgaged = true } : p).ToArray() };
                 new InfrastructureStrategy(e).PostRoll(e.Player, e.State)();
@@ -226,6 +229,10 @@ internal static class InfrastructureStrategyTests
         return doc.RootElement.GetProperty("board").EnumerateArray().Where(p => p.TryGetProperty("price", out _)).Select(p => new PropertyState
         {
             PropertyId = p.GetProperty("id").GetString()!, PropertyName = p.GetProperty("name").GetString()!, SalePrice = p.GetProperty("price").GetDecimal(),
+            MortgageValue = p.GetProperty("mortgageValue").GetDecimal(),
+            HousePrice = p.TryGetProperty("housePrice", out var housePrice) ? housePrice.GetDecimal() : 0,
+            HotelPrice = p.TryGetProperty("hotelPrice", out var hotelPrice) ? hotelPrice.GetDecimal() : 0,
+            Rent = JsonSerializer.Deserialize<PropertyRent>(p.GetProperty("rent").GetRawText(), new JsonSerializerOptions(JsonSerializerDefaults.Web)),
             BoardPosition = p.GetProperty("position").GetInt32(), ColorGroup = p.TryGetProperty("colorGroup", out var c) ? c.GetString() : null,
             Type = p.GetProperty("type").GetString() switch { "railroad" => PropertyType.Railroad, "utility" => PropertyType.Utility, _ => PropertyType.Street }
         }).ToArray();
@@ -246,6 +253,11 @@ internal static class InfrastructureStrategyTests
             }
 
             Executed.Add(action.Id);
+            var terms = TradeValidator.TermsForAction(Player, State, action);
+            if (terms is not null)
+            {
+                State = TradeValidator.RecordCompletedTrade(Player, State, terms);
+            }
             var balance = Player.CashBalance - action.Cost;
             Player = Player with { CashBalance = balance, FinancialLedger = [.. Player.FinancialLedger, new(action.Id, -action.Cost, balance)] };
             if (action.Type is StrategyActionType.UseGetOutOfJailFreeCard or StrategyActionType.PayJailFine)
@@ -253,19 +265,21 @@ internal static class InfrastructureStrategyTests
                 Player = Player with { IsInJail = false };
             }
 
-            if (action.Type is StrategyActionType.BuyProperty or StrategyActionType.BuyMortgagedProperty)
+            if (action.Type == StrategyActionType.BuyProperty)
             {
                 Player = Player with { OwnedPropertyIds = [.. Player.OwnedPropertyIds, action.PropertyId!] };
                 State = State with { Properties = State.Properties.Select(p => p.PropertyId == action.PropertyId ? p with { IsOwned = true } : p).ToArray() };
             }
-            if (action.Trade is { } trade)
+            if (terms is { } trade)
             {
                 Player = Player with { OwnedPropertyIds = Player.OwnedPropertyIds.Except(trade.PropertyIdsGiven).Concat(trade.PropertyIdsReceived).ToArray() };
                 State = State with { OtherPlayers = State.OtherPlayers.Select(p => p.Id == trade.OtherPlayerId ? p with
                 {
-                    CashBalance = p.CashBalance + trade.CashPaid - trade.CashReceived,
-                    OwnedPropertyIds = p.OwnedPropertyIds.Except(trade.PropertyIdsReceived).Concat(trade.PropertyIdsGiven).ToArray()
+                    CashBalance = p.CashBalance + trade.CashPaid - trade.CashReceived - trade.OtherPlayerBankFees,
+                    OwnedPropertyIds = p.OwnedPropertyIds.Except(trade.PropertyIdsReceived).Concat(trade.PropertyIdsGiven).ToArray(),
+                    HeldGetOutOfJailFreeCardIds = p.HeldGetOutOfJailFreeCardIds.Except(trade.CardIdsReceived).Concat(trade.CardIdsGiven).ToArray()
                 } : p).ToArray() };
+                Player = Player with { HeldGetOutOfJailFreeCardIds = Player.HeldGetOutOfJailFreeCardIds.Except(trade.CardIdsGiven).Concat(trade.CardIdsReceived).ToArray() };
             }
             if (action.Type == StrategyActionType.BuildHouse)
             {

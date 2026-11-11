@@ -1,5 +1,6 @@
 using MonoSim.Models;
 using MonoSim.Strategies;
+using MonoSim.Trading;
 
 internal static class ConservativeStrategyTests
 {
@@ -200,7 +201,11 @@ internal static class ConservativeStrategyTests
         return new(player, new GameState { TurnNumber = 1, Properties = properties, OtherPlayers = [other], AvailableActions = actions });
     }
 
-    private static PropertyState Property(string id, string? group, decimal price) => new() { PropertyId = id, PropertyName = id, ColorGroup = group, SalePrice = price };
+    private static PropertyState Property(string id, string? group, decimal price) => new()
+    {
+        PropertyId = id, PropertyName = id, ColorGroup = group, SalePrice = price,
+        MortgageValue = price / 2, HousePrice = 50, HotelPrice = 50
+    };
 
     private sealed class ScenarioExecutor(Player player, GameState state) : IStrategyActionExecutor
     {
@@ -220,6 +225,11 @@ internal static class ConservativeStrategyTests
             }
 
             Executed.Add(action.Id);
+            var terms = TradeValidator.TermsForAction(Player, State, action);
+            if (terms is not null)
+            {
+                State = TradeValidator.RecordCompletedTrade(Player, State, terms);
+            }
             var balance = Player.CashBalance - action.Cost;
             Player = Player with { CashBalance = balance, FinancialLedger = [.. Player.FinancialLedger, new(action.Id, -action.Cost, balance)] };
             if (action.Type == StrategyActionType.BuyProperty)

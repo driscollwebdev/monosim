@@ -27,6 +27,8 @@ public sealed record Player
     /// <summary>Property space IDs from the game definition, in acquisition order.</summary>
     public string[] OwnedPropertyIds { get; init; } = [];
 
+    public string[] HeldGetOutOfJailFreeCardIds { get; init; } = [];
+
     /// <summary>Transactions in chronological order.</summary>
     public Transaction[] FinancialLedger { get; init; } = [];
 }

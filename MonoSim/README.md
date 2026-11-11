@@ -219,16 +219,18 @@ starting another; another group can be started only after every street in the
 current group has a hotel and is unmortgaged.
 
 An unrelated landing purchase is allowed only when it is the last available
-street in its group and has an explicit, seller-approved `FollowUpTrade`. That
+street in its group and has an explicit, nonbinding `FollowUpTrade` plan. That
 exchange must use the purchased street, complete the conservative player's focus
 group, and increase the other player's ownership of a color group they already
-hold. The engine must expose the agreed trade after the prerequisite purchase.
-This checks a concrete deal rather than relying on a speculative future buyer.
+hold. This is planning only: the engine may publish an actual offer only after
+the prerequisite purchase, when the player owns every offered asset. Execution
+requires fresh validation and counterparty acceptance; the plan is not a binding
+promise of future assets or cash.
 
-`PropertyTrade` records the counterparty, properties given and received, cash paid
-and received, and mandatory bank fees. Trades are atomic engine actions. This
-policy interprets a balanced trade as equal printed property values plus cash
-on both sides, before mandatory bank charges. Both positive and negative net
+`PropertyTrade` records the counterparty, properties and cards given and received,
+cash paid and received, and each party's mandatory bank fees. Trades are atomic
+engine actions. The shared trade rules below determine equal values on both
+sides, before mandatory bank charges. Both positive and negative net
 cash costs are supported; an exchange can credit the player's ledger. The engine
 still verifies seller consent, funding, mortgage charges, and ownership before
 executing. Normal focus-group trades can be cash-only purchases; the requirement
@@ -253,7 +255,7 @@ and any extra doubles rolls. Invoke the pre-roll delegate even when it performs
 no transaction: that captures opening cash. Keep `OwnedPropertyIds` in acquisition
 order. Create a fresh strategy instance for each simulation; its chosen group,
 opening cash, and last upgrade turn are private decision memory, separated by
-player ID. The future engine must implement the new trade actions and conditional
+player ID. The future engine must implement trade execution and current-asset
 offers through `IStrategyActionExecutor`; the console app does not yet run games.
 
 The existing strategy-check command also runs conservative scenarios covering
@@ -407,6 +409,127 @@ strategy's decision logic and overrides its target selection and reserve policy.
 The strategy-check command includes fixed targets, both acquisition orders,
 reserve boundaries, trades and fees, final-side spending, subsequent circuits,
 development, expansion, and jail decisions for this variant.
+
+## Custom trade rules
+
+Schema version 2 adds `rules.trades` to the game definition. These are project
+rules supplied for the simulations, including permission to exchange improved
+properties with their buildings attached. All strategies share `TradeValidator`
+for currently executable trades, including the legacy `BuyMortgagedProperty`
+action. A cash purchase of a mortgaged property pays its principal to its current
+owner and the transfer interest separately to the bank.
+
+Trades have exactly two participants: the acting player and `OtherPlayerId`.
+Only their currently owned assets and current cash can be offered. The terms
+support cash, any mix of properties, and held Get Out of Jail Free cards. They
+have no future-income, rent-waiver, or third-party fields. JSON deserialization
+rejects unknown consideration fields instead of silently ignoring them.
+
+| Asset | Exchange value |
+| --- | --- |
+| Unimproved, unmortgaged property | Printed purchase price |
+| Improved property | Printed price plus resale value of its buildings |
+| Mortgaged property | Mortgage principal, excluding interest |
+| Get Out of Jail Free card | $50 per held card |
+
+Buildings use `BuildingResaleFraction` from the rules. A hotel represents the
+four exchanged house purchases plus its additional hotel price; count that
+investment once, without adding nonexistent houses. Mortgaged properties remain
+unimproved under the existing mortgage prerequisite. Populate `MortgageValue`,
+`HousePrice`, and `HotelPrice` in each property snapshot from the definition.
+Player records now include `HeldGetOutOfJailFreeCardIds`, using the original deck
+card IDs so cards can later return to the correct deck.
+
+Each side's asset value plus its cash payment must exactly equal the other side.
+`BankFees` is the acting player's mortgage-transfer interest;
+`OtherPlayerBankFees` is the counterparty's. Each recipient owes interest on
+the mortgaged properties they receive. These charges are **outside** the balanced
+exchange. Both cash balances after net settlement and fees must be nonnegative.
+Load `GameState.BuildingResaleFraction`, `MortgageInterestRate`, and
+`GetOutOfJailFreeCardTradeValue` from the definition's corresponding rule values.
+
+`RecordOffer` validates current ownership and funding before retaining an offer.
+A counteroffer's `OriginalOfferId` must identify the root original offer, with
+the same two participants. Its combined given/received properties must include
+at least one property appearing on either side of that original offer. Either
+or both original properties may be retained, regardless of direction. Every
+counteroffer is still independently value-balanced. Cash/card-only originals
+have no property that could satisfy this counteroffer requirement.
+
+`RecordCompletedTrade` validates and records receipts without moving assets.
+The future executor must atomically transfer ownership, buildings, cards, cash,
+and bank fees, update both financial ledgers and total mortgage values, and
+persist that receipt history in its returned state. The current test executors
+exercise this contract; a production executor is still future work. Offer and
+history helpers copy asset arrays so callers cannot rewrite their original
+terms by modifying the arrays used to submit them.
+
+`GameState.CompletedTrades` covers the entire current full turn, across pre-roll,
+post-roll, and extra rolls. A property received in a trade cannot be offered to
+a **different** counterparty during that turn, whether the pass-through player
+is the acting player or their counterparty. Directly returning it to the same
+player is not a third-party pass-through under this rule. A receipt from an
+earlier turn may be traded, and a property just purchased from the bank may be
+used immediately as leverage. The engine must validate both offers and execution
+against current state, retaining the root original offer while counteroffers
+are being negotiated. Do not reset receipt history between turn phases.
+
+Rent remains a separate cash obligation in `GameState.RentObligations`. Players
+may trade assets to raise cash while rent is outstanding, but a trade does not
+pay, reduce, waive, or defer rent. The engine must settle that obligation through
+a distinct cash rent transaction. Nonbinding strategy plans do not authorize
+future consideration or bypass validation after assets are actually acquired.
+
+The strategy-check command now includes trade valuation, mixed assets, both
+parties' fees and funding, same-turn pass-through protection, counteroffer
+continuity, strict terms parsing, and preservation of rent obligations.
+
+## Trade safety advisory
+
+`TradeSafetyAdvisor` evaluates the strong recommendation to avoid trading away a
+property whose next-roll rent would exceed the seller's entire post-trade cash
+and asset value. It is separate from `TradeValidator`: a dangerous exchange can
+still be legal, offered, and executed. The built-in strategies avoid it during
+ordinary decision-making, while future strategies may choose differently.
+
+The assessment uses direct movement from the player's current position with the
+configured dice, including wraparound. It does not simulate Chance or Community
+Chest movement, additional rolls, or future changes to buildings or mortgages.
+It compares against the immediate post-trade snapshot without assuming future GO
+salary or rent income. Evaluate the position and state appropriate to the next
+ordinary movement roll; the engine still handles jail and movement rules.
+
+Rent reflects the recipient's ownership **after** both sides of the exchange:
+complete-color rent, house/hotel schedules, railroad counts, and utility dice
+multipliers all use that projected state. A currently mortgaged transferred
+property collects no rent. Each exposure reports its maximum reachable rent and
+the dice totals that would exceed the player's post-trade total value. Equality
+does not count as exceeding wealth.
+
+Post-trade wealth includes cash after bank fees, retained and received properties
+valued under the custom trade rules, and retained/received jail cards at $50.
+Populate `PropertyState.Rent` from the property's definition and load `DiceCount`
+and `DiceSides` from the rules. A reachable rent-bearing property requires its
+rent schedule; missing pricing/rent inputs must not be treated as a safe trade.
+
+`FundsDueDebt` identifies a net cash-raising exchange that takes the player from
+insufficient cash to enough to cover all currently due cash obligations. The
+assessment retains its jeopardy warning but clears `ShouldAvoid` for that debt
+exception. Rent is listed in `RentObligations`; other currently due debts belong
+in `CashObligations`, with a null payee for the bank. Do not list a rent debt in
+both collections or include hypothetical future expenses.
+
+All five built-in strategies prioritize a legal debt-funding offer over ordinary
+investment preferences, even if needed to liquidate a protected target asset.
+They prefer a safe sufficient offer when one is available. While a due obligation
+remains recorded, they preserve the resulting cash and return control so the
+engine can make the separate cash payment. A partial cash increase that cannot
+cover the currently due total does not receive this exception. No advisory can
+waive the two-party, valuation, funding, wash-trade, or counteroffer legality rules.
+
+The strategy-check command includes direct-roll boundaries, wraparound, post-trade
+rent calculations, assets and bank fees, the advisory/legality distinction, and
+debt rescue across all five strategies.
 
 ## References
 

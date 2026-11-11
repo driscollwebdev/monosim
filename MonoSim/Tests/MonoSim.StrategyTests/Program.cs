@@ -1,5 +1,6 @@
 using MonoSim.Models;
 using MonoSim.Strategies;
+using MonoSim.Trading;
 
 var tests = new (string Name, Action Run)[]
 {
@@ -25,22 +26,22 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Completing a color group does not change purchase priority", () =>
     {
-        var engine = Run(100, Option("completes", StrategyActionType.BuyMortgagedProperty, 100, completes: true), Option("ordinary", StrategyActionType.BuyMortgagedProperty, 60));
+        var engine = Run(100, Option("completes", StrategyActionType.BuyMortgagedProperty, 110, completes: true), Option("ordinary", StrategyActionType.BuyMortgagedProperty, 55));
         Check(engine.Executed.SequenceEqual(["ordinary"]), "Prioritized a monopoly over an ordinary acquisition.");
     }),
     ("Mortgage trades follow the landing purchase when cash remains", () =>
     {
-        var engine = Run(135, Option("mortgage-trade", StrategyActionType.BuyMortgagedProperty, 75, completes: true), Option("landed", StrategyActionType.BuyProperty, 60));
+        var engine = Run(115, Option("mortgage-trade", StrategyActionType.BuyMortgagedProperty, 55, completes: true), Option("landed", StrategyActionType.BuyProperty, 60));
         Check(engine.Executed.SequenceEqual(["landed", "mortgage-trade"]) && engine.Player.CashBalance == 0, "Incorrect acquisition order.");
     }),
     ("Other affordable mortgage offers are purchased", () =>
     {
-        var engine = Run(100, Option("mortgage-trade", StrategyActionType.BuyMortgagedProperty, 75));
-        Check(engine.Executed.SequenceEqual(["mortgage-trade"]) && engine.Player.CashBalance == 25, "Mortgage trade was skipped.");
+        var engine = Run(100, Option("mortgage-trade", StrategyActionType.BuyMortgagedProperty, 55));
+        Check(engine.Executed.SequenceEqual(["mortgage-trade"]) && engine.Player.CashBalance == 45, "Mortgage trade was skipped.");
     }),
     ("Cheaper secondary mortgage offers maximize the number purchased", () =>
     {
-        var engine = Run(120, Option("expensive", StrategyActionType.BuyMortgagedProperty, 110), Option("a", StrategyActionType.BuyMortgagedProperty, 60), Option("b", StrategyActionType.BuyMortgagedProperty, 60));
+        var engine = Run(110, Option("expensive", StrategyActionType.BuyMortgagedProperty, 110), Option("a", StrategyActionType.BuyMortgagedProperty, 55), Option("b", StrategyActionType.BuyMortgagedProperty, 55));
         Check(engine.Executed.SequenceEqual(["a", "b"]), "Did not select the affordable pair.");
     }),
     ("Development prefers higher rent increase per dollar", () =>
@@ -117,6 +118,8 @@ failures += ConservativeStrategyTests.RunAll();
 failures += InfrastructureStrategyTests.RunAll();
 failures += AdjacentGroupStrategyTests.RunAll();
 failures += BlueGreenStrategyTests.RunAll();
+failures += TradeRulesTests.RunAll();
+failures += TradeSafetyTests.RunAll();
 return failures == 0 ? 0 : 1;
 
 static void Check(bool condition, string message)
@@ -132,7 +135,21 @@ static Player PlayerWith(decimal cash, bool inJail = false) => new()
     Id = "player-1", Name = "Alice", Strategy = "aggressive", CashBalance = cash, IsInJail = inJail
 };
 
-static GameState State(params StrategyAction[] options) => new() { AvailableActions = options };
+static GameState State(params StrategyAction[] options)
+{
+    var mortgages = options.Where(a => a.Type == StrategyActionType.BuyMortgagedProperty).ToArray();
+    return new GameState
+    {
+        AvailableActions = options,
+        Properties = mortgages.Select(a => new PropertyState
+        {
+            PropertyId = a.PropertyId!, PropertyName = a.Id, SalePrice = 2 * a.Cost / 1.1m,
+            MortgageValue = a.Cost / 1.1m, IsOwned = true, IsMortgaged = true
+        }).ToArray(),
+        OtherPlayers = [new Player { Id = "other", Name = "Other", Strategy = "other", CashBalance = 10000,
+            OwnedPropertyIds = mortgages.Select(a => a.PropertyId!).ToArray() }]
+    };
+}
 
 static StrategyAction Option(string id, StrategyActionType type, decimal cost, bool completes = false, decimal rent = 0) => new()
 {
@@ -161,6 +178,11 @@ sealed class FakeExecutor(Player player, GameState state) : IStrategyActionExecu
         }
 
         Executed.Add(action.Id);
+        var terms = TradeValidator.TermsForAction(Player, State, action);
+        if (terms is not null)
+        {
+            State = TradeValidator.RecordCompletedTrade(Player, State, terms);
+        }
         var balance = Player.CashBalance - action.Cost;
         var isInJail = action.Type is StrategyActionType.PayJailFine or StrategyActionType.UseGetOutOfJailFreeCard ? false : Player.IsInJail;
         var ledger = action.Cost == 0 ? Player.FinancialLedger : [.. Player.FinancialLedger, new Transaction(action.Id, -action.Cost, balance)];
@@ -170,6 +192,15 @@ sealed class FakeExecutor(Player player, GameState state) : IStrategyActionExecu
             IsInJail = isInJail,
             FinancialLedger = ledger
         };
+        if (terms is not null)
+        {
+            Player = Player with { OwnedPropertyIds = Player.OwnedPropertyIds.Except(terms.PropertyIdsGiven).Concat(terms.PropertyIdsReceived).ToArray() };
+            State = State with { OtherPlayers = State.OtherPlayers.Select(p => p.Id == terms.OtherPlayerId ? p with
+            {
+                CashBalance = p.CashBalance + terms.CashPaid - terms.CashReceived - terms.OtherPlayerBankFees,
+                OwnedPropertyIds = p.OwnedPropertyIds.Except(terms.PropertyIdsReceived).Concat(terms.PropertyIdsGiven).ToArray()
+            } : p).ToArray() };
+        }
         State = AfterExecute?.Invoke(action) ?? State with
         {
             AvailableActions = State.AvailableActions.Where(option => option.Id != action.Id).ToArray()

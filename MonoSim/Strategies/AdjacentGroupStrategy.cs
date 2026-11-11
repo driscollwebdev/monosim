@@ -1,4 +1,5 @@
 using MonoSim.Models;
+using MonoSim.Trading;
 using static MonoSim.Strategies.InfrastructureStrategy;
 
 namespace MonoSim.Strategies;
@@ -66,6 +67,10 @@ public sealed class AdjacentGroupStrategy : IPlayingStrategy
     private static StrategyAction? SelectAction(Player player, GameState state, TargetPair? pair, bool preRoll,
         Func<Player, GameState, decimal, HashSet<string>, HashSet<string>, bool>? reservePolicy)
     {
+        if (TradeSafetyAdvisor.DebtDue(player, state) > 0)
+        {
+            return TradeSafetyAdvisor.FindDebtFundingTrade(player, state);
+        }
         var owned = player.OwnedPropertyIds.ToHashSet(StringComparer.Ordinal);
         if (player.IsInJail)
         {
@@ -127,7 +132,7 @@ public sealed class AdjacentGroupStrategy : IPlayingStrategy
                 }
 
                 if (action.Type == StrategyActionType.BuyMortgagedProperty && (!property.IsOwned || !property.IsMortgaged ||
-                    !state.OtherPlayers.Any(p => p.OwnedPropertyIds.Contains(property.PropertyId))))
+                    !TradeValidator.ValidateAction(player, state, action).IsValid))
                 {
                     return null;
                 }

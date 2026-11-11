@@ -1,4 +1,5 @@
 using MonoSim.Models;
+using MonoSim.Trading;
 
 namespace MonoSim.Strategies;
 
@@ -39,6 +40,10 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
             memory[player.Id] = plan;
             while (next is not null)
             {
+                if (TradeValidator.IsTradeAction(next) && !TradeValidator.ValidateAction(currentPlayer, currentState, next).IsValid)
+                {
+                    throw new InvalidOperationException("The trade is no longer valid for the current state.");
+                }
                 var updated = executor.Execute(currentPlayer.Id, next);
                 if (updated.Player.Id != player.Id || updated.Player.CashBalance != currentPlayer.CashBalance - next.Cost ||
                     updated.GameState.TurnNumber != state.TurnNumber)
@@ -79,13 +84,18 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
 
     private static StrategyAction? SelectAction(Player player, GameState state, DecisionMemory plan)
     {
+        if (TradeSafetyAdvisor.DebtDue(player, state) > 0)
+        {
+            return TradeSafetyAdvisor.FindDebtFundingTrade(player, state);
+        }
         // Voluntary release is never selected. The engine rolls doubles and enforces the third failed attempt.
         if (player.IsInJail)
         {
             return null;
         }
 
-        var options = state.AvailableActions.Where(a => a.Cost <= player.CashBalance).ToArray();
+        var options = state.AvailableActions.Where(a => a.Cost <= player.CashBalance &&
+            (!TradeValidator.IsTradeAction(a) || TradeValidator.ValidateAction(player, state, a).IsValid)).ToArray();
         var target = plan.TargetGroup;
         if (target is null)
         {
@@ -178,6 +188,14 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
     private static bool IsHelpfulTrade(Player player, GameState state, string target, PropertyTrade trade,
         HashSet<string> owned, bool requireCompletion)
     {
+        if (!TradeValidator.Validate(player with { OwnedPropertyIds = owned.ToArray() }, state, trade).IsValid)
+        {
+            return false;
+        }
+        if (TradeSafetyAdvisor.Assess(player with { OwnedPropertyIds = owned.ToArray() }, state, trade).ShouldAvoid)
+        {
+            return false;
+        }
         var other = state.OtherPlayers.FirstOrDefault(p => p.Id == trade.OtherPlayerId && p.Id != player.Id);
         if (other is null || trade.CashPaid < 0 || trade.CashReceived < 0 || trade.BankFees < 0 ||
             trade.CashPaid + trade.BankFees > player.CashBalance || trade.PropertyIdsReceived.Length == 0 ||
@@ -190,14 +208,6 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
 
         if (trade.PropertyIdsGiven.Any(id => !owned.Contains(id) || FindProperty(state, id) is not { } p || p.ColorGroup == target) ||
             trade.PropertyIdsReceived.Any(id => !other.OwnedPropertyIds.Contains(id) || owned.Contains(id) || FindProperty(state, id)?.ColorGroup != target))
-        {
-            return false;
-        }
-
-        // Equal printed property values plus cash make the exchange value-neutral before mandatory bank fees.
-        var given = trade.PropertyIdsGiven.Sum(id => FindProperty(state, id)!.SalePrice) + trade.CashPaid;
-        var received = trade.PropertyIdsReceived.Sum(id => FindProperty(state, id)!.SalePrice) + trade.CashReceived;
-        if (given != received)
         {
             return false;
         }

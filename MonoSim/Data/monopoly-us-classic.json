@@ -1,6 +1,6 @@
 {
   "$schema": "./monopoly.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "edition": {
     "id": "us-classic-traditional",
     "name": "U.S. Classic (traditional decks, post-2008 taxes)",
@@ -8,7 +8,8 @@
     "moneyUnit": "wholeDollar",
     "notes": [
       "Traditional pre-2021 Community Chest and dividend Chance card; no Money Grab or Speed Die.",
-      "Fixed Income Tax 200 and Luxury Tax 100; no Free Parking jackpot or bonus for landing on GO."
+      "Fixed Income Tax 200 and Luxury Tax 100; no Free Parking jackpot or bonus for landing on GO.",
+      "Custom trades are equal-value two-party exchanges; no same-turn third-party property pass-throughs or future consideration."
     ]
   },
   "sources": [
@@ -57,10 +58,25 @@
     "unmortgagedColorGroupRequiredToBuild": true,
     "buildAndSellEvenly": true,
     "clearColorGroupBuildingsBeforeMortgage": true,
-    "auctionDeclinedProperties": true,
+    "auctionDeclinedProperties": false,
     "rentCollectibleWhileInJail": true,
     "ordinaryCardReturn": "bottomOfDeck",
-    "retainedCardReturn": "bottomOfOriginalDeck"
+    "retainedCardReturn": "bottomOfOriginalDeck",
+    "trades": {
+      "participantCount": 2,
+      "requireEqualValue": true,
+      "allowSameTurnThirdPartyPropertyTransfers": false,
+      "allowFutureConsideration": false,
+      "allowImprovedProperties": true,
+      "rentSettlement": "cashOnly",
+      "allowTradesToRaiseRentCash": true,
+      "unimprovedPropertyValue": "faceValue",
+      "improvedPropertyValue": "faceValuePlusBuildingResale",
+      "mortgagedPropertyValue": "mortgagePrincipal",
+      "getOutOfJailFreeCardValue": 50,
+      "mortgageTransferInterest": "separateBankFee",
+      "counterOffers": "retainAtLeastOneOriginalProperty"
+    }
   },
   "board": [
     {
