@@ -1,0 +1,978 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MonoSim U.S. Classic game definition",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "edition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currency": {
+          "const": "USD"
+        },
+        "moneyUnit": {
+          "const": "wholeDollar"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "currency",
+        "moneyUnit",
+        "notes"
+      ],
+      "additionalProperties": false
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "url",
+          "scope"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "initialState": {
+      "type": "object",
+      "properties": {
+        "playerCash": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "playerPositionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "playerInJail": {
+          "type": "boolean"
+        },
+        "propertyOwner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "propertiesMortgaged": {
+          "type": "boolean"
+        },
+        "housesPerStreet": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hotelsPerStreet": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bankHouses": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bankHotels": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bankCashIsUnlimited": {
+          "type": "boolean"
+        },
+        "shuffleDecks": {
+          "type": "boolean"
+        },
+        "heldCardsPerPlayer": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "playerCash",
+        "playerPositionId",
+        "playerInJail",
+        "propertyOwner",
+        "propertiesMortgaged",
+        "housesPerStreet",
+        "hotelsPerStreet",
+        "bankHouses",
+        "bankHotels",
+        "bankCashIsUnlimited",
+        "shuffleDecks",
+        "heldCardsPerPlayer"
+      ],
+      "additionalProperties": false
+    },
+    "rules": {
+      "type": "object",
+      "properties": {
+        "diceCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diceSides": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "goSalary": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "jailReleaseFee": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxJailTurns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "consecutiveDoublesToJail": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxHousesPerStreet": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxHotelsPerStreet": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "housesReturnedForHotel": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "buildingResaleFraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mortgageInterestRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mortgagedPropertyRent": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "freeParkingReward": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completeColorGroupRequiredToBuild": {
+          "type": "boolean"
+        },
+        "unmortgagedColorGroupRequiredToBuild": {
+          "type": "boolean"
+        },
+        "buildAndSellEvenly": {
+          "type": "boolean"
+        },
+        "clearColorGroupBuildingsBeforeMortgage": {
+          "type": "boolean"
+        },
+        "auctionDeclinedProperties": {
+          "type": "boolean"
+        },
+        "rentCollectibleWhileInJail": {
+          "type": "boolean"
+        },
+        "ordinaryCardReturn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retainedCardReturn": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "diceCount",
+        "diceSides",
+        "goSalary",
+        "jailReleaseFee",
+        "maxJailTurns",
+        "consecutiveDoublesToJail",
+        "maxHousesPerStreet",
+        "maxHotelsPerStreet",
+        "housesReturnedForHotel",
+        "buildingResaleFraction",
+        "mortgageInterestRate",
+        "mortgagedPropertyRent",
+        "freeParkingReward",
+        "completeColorGroupRequiredToBuild",
+        "unmortgagedColorGroupRequiredToBuild",
+        "buildAndSellEvenly",
+        "clearColorGroupBuildingsBeforeMortgage",
+        "auctionDeclinedProperties",
+        "rentCollectibleWhileInJail",
+        "ordinaryCardReturn",
+        "retainedCardReturn"
+      ],
+      "additionalProperties": false
+    },
+    "board": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/space"
+      },
+      "minItems": 40,
+      "maxItems": 40
+    },
+    "decks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/deck"
+      },
+      "minItems": 2,
+      "maxItems": 2
+    }
+  },
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "edition",
+    "sources",
+    "initialState",
+    "rules",
+    "board",
+    "decks"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "transfer": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "transfer"
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "from": {
+          "enum": [
+            "bank",
+            "currentPlayer",
+            "eachOtherPlayer"
+          ]
+        },
+        "to": {
+          "enum": [
+            "bank",
+            "currentPlayer",
+            "eachOtherPlayer"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "amount",
+        "from",
+        "to"
+      ],
+      "additionalProperties": false
+    },
+    "moveTo": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "moveTo"
+        },
+        "destinationId": {
+          "$ref": "#/$defs/id"
+        },
+        "direction": {
+          "const": "forward"
+        },
+        "collectGo": {
+          "type": "boolean"
+        },
+        "resolveDestination": {
+          "const": true
+        }
+      },
+      "required": [
+        "type",
+        "destinationId",
+        "direction",
+        "collectGo",
+        "resolveDestination"
+      ],
+      "additionalProperties": false
+    },
+    "moveToNearest": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "moveToNearest"
+        },
+        "spaceType": {
+          "enum": [
+            "railroad",
+            "utility"
+          ]
+        },
+        "direction": {
+          "const": "forward"
+        },
+        "collectGo": {
+          "type": "boolean"
+        },
+        "resolveDestination": {
+          "const": true
+        },
+        "rentOverride": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "multiplyNormalRent"
+                },
+                "multiplier": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "type",
+                "multiplier"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "diceMultiplier"
+                },
+                "multiplier": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "rollNewDice": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "type",
+                "multiplier",
+                "rollNewDice"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "spaceType",
+        "direction",
+        "collectGo",
+        "resolveDestination",
+        "rentOverride"
+      ],
+      "additionalProperties": false
+    },
+    "moveRelative": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "moveRelative"
+        },
+        "spaces": {
+          "type": "integer"
+        },
+        "collectGo": {
+          "type": "boolean"
+        },
+        "resolveDestination": {
+          "const": true
+        }
+      },
+      "required": [
+        "type",
+        "spaces",
+        "collectGo",
+        "resolveDestination"
+      ],
+      "additionalProperties": false
+    },
+    "goToJail": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "goToJail"
+        },
+        "destinationId": {
+          "$ref": "#/$defs/id"
+        },
+        "collectGo": {
+          "const": false
+        },
+        "endTurn": {
+          "const": true
+        }
+      },
+      "required": [
+        "type",
+        "destinationId",
+        "collectGo",
+        "endTurn"
+      ],
+      "additionalProperties": false
+    },
+    "repairs": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "repairs"
+        },
+        "perHouse": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "perHotel": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "to": {
+          "const": "bank"
+        }
+      },
+      "required": [
+        "type",
+        "perHouse",
+        "perHotel",
+        "to"
+      ],
+      "additionalProperties": false
+    },
+    "retain": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "retain"
+        },
+        "benefit": {
+          "const": "getOutOfJailFree"
+        },
+        "tradable": {
+          "type": "boolean"
+        },
+        "returnToDeckOnUse": {
+          "const": true
+        }
+      },
+      "required": [
+        "type",
+        "benefit",
+        "tradable",
+        "returnToDeckOnUse"
+      ],
+      "additionalProperties": false
+    },
+    "effect": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/transfer"
+        },
+        {
+          "$ref": "#/$defs/moveTo"
+        },
+        {
+          "$ref": "#/$defs/moveToNearest"
+        },
+        {
+          "$ref": "#/$defs/moveRelative"
+        },
+        {
+          "$ref": "#/$defs/goToJail"
+        },
+        {
+          "$ref": "#/$defs/repairs"
+        },
+        {
+          "$ref": "#/$defs/retain"
+        }
+      ]
+    },
+    "space": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "position": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "const": "street"
+            },
+            "colorGroup": {
+              "enum": [
+                "brown",
+                "lightBlue",
+                "pink",
+                "orange",
+                "red",
+                "yellow",
+                "green",
+                "darkBlue"
+              ]
+            },
+            "price": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "mortgageValue": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "housePrice": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "hotelPrice": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "rent": {
+              "type": "object",
+              "properties": {
+                "base": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "completeColorGroup": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "houses": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "hotel": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "base",
+                "completeColorGroup",
+                "houses",
+                "hotel"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "position",
+            "id",
+            "name",
+            "type",
+            "colorGroup",
+            "price",
+            "mortgageValue",
+            "housePrice",
+            "hotelPrice",
+            "rent"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "position": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "const": "railroad"
+            },
+            "price": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "mortgageValue": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "rent": {
+              "type": "object",
+              "properties": {
+                "byRailroadsOwned": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                }
+              },
+              "required": [
+                "byRailroadsOwned"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "position",
+            "id",
+            "name",
+            "type",
+            "price",
+            "mortgageValue",
+            "rent"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "position": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "const": "utility"
+            },
+            "price": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "mortgageValue": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "rent": {
+              "type": "object",
+              "properties": {
+                "diceMultipliersByUtilitiesOwned": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "diceMultipliersByUtilitiesOwned"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "position",
+            "id",
+            "name",
+            "type",
+            "price",
+            "mortgageValue",
+            "rent"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "position": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "const": "drawCard"
+            },
+            "deckId": {
+              "enum": [
+                "chance",
+                "communityChest"
+              ]
+            }
+          },
+          "required": [
+            "position",
+            "id",
+            "name",
+            "type",
+            "deckId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "position": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "const": "tax"
+            },
+            "effects": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/transfer"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            }
+          },
+          "required": [
+            "position",
+            "id",
+            "name",
+            "type",
+            "effects"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "position": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "const": "goToJail"
+            },
+            "effects": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/goToJail"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            }
+          },
+          "required": [
+            "position",
+            "id",
+            "name",
+            "type",
+            "effects"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "position": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "const": "go"
+            }
+          },
+          "required": [
+            "position",
+            "id",
+            "name",
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "position": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "const": "jail"
+            }
+          },
+          "required": [
+            "position",
+            "id",
+            "name",
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "position": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "const": "freeParking"
+            }
+          },
+          "required": [
+            "position",
+            "id",
+            "name",
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "card": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "effects"
+      ],
+      "additionalProperties": false
+    },
+    "deck": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "enum": [
+            "chance",
+            "communityChest"
+          ]
+        },
+        "cards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/card"
+          },
+          "minItems": 16,
+          "maxItems": 16
+        }
+      },
+      "required": [
+        "id",
+        "cards"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

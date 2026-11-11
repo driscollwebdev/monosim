@@ -1,0 +1,322 @@
+# MonoSim
+
+The game definition is [Data/monopoly-us-classic.json](Data/monopoly-us-classic.json).
+It contains 40 spaces in clockwise order, all 28 purchasable properties, two
+16-card decks, starting conditions, and financial rule constants. Amounts are
+whole U.S. dollars. The app uses the built-in `System.Text.Json` parser.
+
+The baseline uses U.S. Classic names, fixed Income Tax of $200 and Luxury Tax
+of $100, and traditional pre-2021 decks including the $50 dividend Chance card.
+It excludes Speed Die and Money Grab variants. Older editions can have different
+taxes or card payments; current editions have rewritten Community Chest cards.
+The edition ID identifies these choices rather than claiming all editions agree.
+
+```powershell
+dotnet run
+pwsh -NoProfile -File scripts/Test-GameData.ps1
+dotnet build
+```
+
+The app loads the definition and prints its inventory. Build and publish outputs
+include the JSON and schema; loading uses the executable's directory. Simulation,
+strategies, action logging, and delimited results are subsequent work.
+
+## Contract
+
+[Data/monopoly.schema.json](Data/monopoly.schema.json) is a Draft 2020-12 JSON
+Schema defining required fields and effect variants and rejecting unknown fields.
+The PowerShell 7.4+ validation script checks the schema and cross-reference,
+financial, board, and deck invariants without additional packages.
+
+`schemaVersion` versions the contract; `edition.id` identifies the rules and card
+set. Record both with future simulation results. Stable space/card IDs support
+structured logs. `position` is zero-based: GO is 0 and Boardwalk is 39.
+Movement wraps modulo 40. Properties are embedded in their spaces so each has
+only one definition.
+
+Street `rent.houses[0..3]` means one through four houses. Base, unimproved
+complete-group, and hotel rents are separate values. Complete-group rent applies
+only to unimproved streets, even if another street in the group is mortgaged.
+The mortgaged space itself earns no rent. Railroad and utility arrays use
+**the number owned minus one** as the index. Ordinary utility rent multiplies
+the movement dice total.
+
+`hotelPrice` is additional cash to upgrade a street already holding four houses;
+those houses return to the bank. It is not the total cost from an empty street.
+Buildings sell back at `buildingResaleFraction` of purchase cost; a hotel represents
+five building purchases. Repairs count actual houses and hotels, without also
+charging for houses beneath a hotel.
+
+`mortgageValue` is the cash received. Redemption costs principal plus
+`mortgageInterestRate` of principal. A recipient of mortgaged property owes that
+interest immediately; if they defer redemption, interest is charged again when
+redeeming. Rates are decimal fractions, not money amounts; use .NET `decimal`
+for financial calculations. Building prerequisites and finite supplies are
+included in `rules` and `initialState`.
+
+## Effects and state
+
+`effects` is an ordered list; descriptions are labels, not executable text.
+
+| Type | Interpretation |
+| --- | --- |
+| `transfer` | Move positive `amount` from `from` to `to`. `eachOtherPlayer` means that amount separately for every active opponent, excluding the current player. |
+| `moveTo` | Move forward to `destinationId`, then resolve that space. |
+| `moveToNearest` | Move forward to the next matching `spaceType`, wrapping if needed. The rent override applies only to this landing. |
+| `moveRelative` | Move the signed number of spaces, then resolve the destination, including another card draw. |
+| `goToJail` | Enter Jail as a prisoner, collect no GO salary, and end the turn. |
+| `repairs` | Pay the bank `perHouse` times houses owned plus `perHotel` times hotels owned. |
+| `retain` | Hold this physical card outside its deck until used or traded. After use, return it to its original deck's bottom. |
+
+On forward movement, `collectGo: true` enables the normal `goSalary` for crossing
+or reaching GO, once per circuit. A card moving to GO awards salary through
+movement alone; do not add another payment when resolving GO. Initial placement
+on GO pays nothing. Landing on Jail normally is just visiting. Tax payments go
+to the bank and Free Parking pays nothing.
+
+Nearest-railroad cards double normal rent. The nearest-utility card uses ten times
+a new two-dice roll. Overrides apply when rent is owed: self-owned and mortgaged
+destinations charge nothing; unowned destinations still allow purchase or auction.
+Two separate nearest-railroad IDs preserve both physical cards in the deck.
+Ordinary cards return to the bottom after resolution. Shuffle each deck at setup;
+the JSON array order is not a prescribed draw order. A recorded random seed can
+later make simulations reproducible.
+
+This is a reusable definition, not mutable game state. Each simulation should
+create fresh balances, ownership, mortgages, buildings, and deck order from
+`initialState`. Keep held cards separately and preserve their original deck IDs.
+
+## Player records
+
+`MonoSim.Models.Player` holds a player's string ID, name, strategy identifier,
+cash balance, total mortgage value, zero-based board position, owned property
+IDs, and financial ledger. Monetary fields use `decimal`. Identity, strategy,
+and cash balance are required at construction; initialize cash from the game
+definition's `initialState.playerCash`. Property and ledger arrays start empty.
+
+`TotalMortgageValue` is the sum of the listed mortgage values of **all** owned
+properties, including ones currently mortgaged. It is not outstanding mortgage
+debt or remaining borrowing capacity. Property IDs reference board space IDs.
+
+Each `Transaction` contains `Description`, signed `Amount` (negative for a debit,
+positive for a credit), and `NewCashBalance` after the transaction. Ledger entries
+are chronological. These records store snapshots; future game logic must append
+the transaction and update `CashBalance` together, and recalculate mortgage value
+when ownership changes. Starting cash is the opening balance, before any ledger
+entries, unless explicitly recorded as an opening credit from zero.
+
+Records use init-only properties and support `System.Text.Json` serialization.
+Arrays remain mutable in .NET: when creating a new snapshot with `with`, replace
+changed arrays instead of mutating arrays shared with an earlier snapshot.
+
+```csharp
+using MonoSim.Models;
+
+var player = new Player
+{
+    Id = "player-1",
+    Name = "Alice",
+    Strategy = "baseline",
+    CashBalance = 1500m // In game setup, read this from initialState.playerCash.
+};
+
+var rent = new Transaction("Rent payment", -50m, player.CashBalance - 50m);
+player = player with
+{
+    CashBalance = rent.NewCashBalance,
+    FinancialLedger = [.. player.FinancialLedger, rent]
+};
+```
+
+## Observable game state
+
+`MonoSim.Models.GameState` is the view passed to both `IPlayingStrategy.PreRoll`
+and `IPlayingStrategy.PostRoll`, alongside the acting player's own `Player` record.
+Its `OtherPlayers` array excludes the acting player and contains every other
+player's record. Their current positions are available through
+`OtherPlayers[i].BoardPosition`, keeping one source for each position.
+
+Its `Properties` array contains a `PropertyState` for every purchasable space,
+including streets, railroads, and utilities. Each record has `PropertyId`,
+`PropertyName`, decimal `SalePrice`, `HouseCount`, `HotelCount`, `IsOwned`, and
+`IsMortgaged`.
+`IsAvailable` is computed as the inverse of `IsOwned`, so the two flags cannot
+disagree. Sale price is the printed purchase price, not a negotiated trade or
+auction price. Hotel properties have zero houses; railroads and utilities have
+zero houses and hotels. Snapshot construction should populate the arrays from
+the current game state and copy mutable arrays when isolation is needed.
+
+```csharp
+Action PreRoll(Player player, GameState gameState);
+Action PostRoll(Player player, GameState gameState);
+```
+
+Each method returns a `System.Action` delegate for the game engine to invoke.
+Strategy methods select the action; the engine executes it to update game state.
+
+## Aggressive strategy
+
+`AggressiveStrategy` spends current cash only. It does not mortgage owned
+properties to raise funds or keep an investment cash reserve. Its priorities are:
+
+1. Buy the available property landed on when affordable, regardless of whether
+   it completes a color group.
+2. Buy affordable mortgaged properties through accepted offers from other players,
+   as a secondary way to accumulate properties and eventually form monopolies.
+3. Spend remaining cash on mortgage redemption and legal house/hotel upgrades,
+   choosing the greatest immediate ordinary-rent increase per dollar first.
+
+Completing a color group does not raise purchase priority. Mortgage trades never
+displace an affordable landing purchase. The policy has no fixed turn-number
+cutoff for trading: it considers a trade when the engine offers one and cash
+remains after any landing purchase. Equal investment returns use lower cost,
+then ordinal option ID, for deterministic decisions. Money left over because
+no legal option is affordable stays in the player's cash balance.
+
+Before rolling, an imprisoned player uses a held Get Out of Jail Free card if
+the engine offers that option; otherwise they pay the affordable jail fine.
+`Player.IsInJail` distinguishes imprisonment from visiting the Jail space. If
+release is unaffordable, they preserve cash and leave release-by-dice handling
+to the engine. A newly jailed player makes no post-roll investments, preserving
+cash for release before the next roll. After a successful pre-roll release,
+the strategy may spend the remaining cash on offered investments.
+
+The engine supplies `GameState.AvailableActions` for the current player and turn
+phase. These are legal options with exact total costs, including mortgage
+transfer interest or redemption interest. They may be unaffordable. In particular,
+the engine must offer bank purchases only on the appropriate landing, mortgage
+trades only with seller agreement, jail cards only when held, and construction
+only when ownership, mortgages, even building, and bank stock permit it. A bought
+mortgaged property remains mortgaged until a separate redemption option executes.
+
+Inject an `IStrategyActionExecutor` when constructing the strategy. Invoking the
+returned `Action` runs the chosen option through that executor, which applies
+the changes and returns `StrategyTurnState` containing the updated player and
+fresh game state. The strategy then selects the next affordable option until
+none remains. Each option is re-evaluated after execution, so purchases and
+construction can unlock further legal options. The executor updates financial
+ledgers, ownership, total mortgage values, buildings, and cards; the strategy
+does not mutate the input snapshots. A stale/rejected option must be rejected
+by the executor. Returned actions are intended to execute once, in the turn
+and phase for which they were selected.
+
+This execution interface is the integration point for the future game engine;
+there is not yet a production executor, turn runner, or trade-negotiation system.
+The package-free strategy checks use a test executor and can be run with:
+
+```powershell
+dotnet run --project Tests/MonoSim.StrategyTests/MonoSim.StrategyTests.csproj
+```
+
+## Conservative strategy
+
+`ConservativeStrategy` focuses on the first color group acquired by landing on
+a street. Railroads and utilities do not establish a focus. It buys other landed
+streets in that group and considers accepted trades that increase its ownership
+of the group. It does not give away streets from the focus group or speculate on
+unrelated purchases. Once the group is owned, it develops that group before
+starting another; another group can be started only after every street in the
+current group has a hotel and is unmortgaged.
+
+An unrelated landing purchase is allowed only when it is the last available
+street in its group and has an explicit, seller-approved `FollowUpTrade`. That
+exchange must use the purchased street, complete the conservative player's focus
+group, and increase the other player's ownership of a color group they already
+hold. The engine must expose the agreed trade after the prerequisite purchase.
+This checks a concrete deal rather than relying on a speculative future buyer.
+
+`PropertyTrade` records the counterparty, properties given and received, cash paid
+and received, and mandatory bank fees. Trades are atomic engine actions. This
+policy interprets a balanced trade as equal printed property values plus cash
+on both sides, before mandatory bank charges. Both positive and negative net
+cash costs are supported; an exchange can credit the player's ledger. The engine
+still verifies seller consent, funding, mortgage charges, and ownership before
+executing. Normal focus-group trades can be cash-only purchases; the requirement
+to help the counterparty's monopoly applies to unrelated setup purchases.
+
+There is no fixed cash reserve. Focus acquisitions can spend existing cash, but
+development and mortgage redemption use only the positive difference between
+current cash and cash at the start of this player's full turn. At most **one**
+house or hotel upgrade executes in that full turn, across both strategy phases.
+Legal upgrades favor streets with fewer houses. This conserves cash during
+ordinary turns while allowing initial monopoly assembly to cost cash. It is a
+decision rule, not a guarantee about how often a simulated turn will be profitable.
+
+An imprisoned conservative player selects no voluntary release action, including
+when holding a jail card. The engine handles dice attempts, release on doubles,
+and any mandatory fee after the third failed attempt. The strategy does not
+extend imprisonment beyond that limit.
+
+Populate `PropertyState.ColorGroup` from the game definition. Supply a distinct
+`GameState.TurnNumber` for each full player turn, unchanged across its phases
+and any extra doubles rolls. Invoke the pre-roll delegate even when it performs
+no transaction: that captures opening cash. Keep `OwnedPropertyIds` in acquisition
+order. Create a fresh strategy instance for each simulation; its chosen group,
+opening cash, and last upgrade turn are private decision memory, separated by
+player ID. The future engine must implement the new trade actions and conditional
+offers through `IStrategyActionExecutor`; the console app does not yet run games.
+
+The existing strategy-check command also runs conservative scenarios covering
+target persistence, trades and setup purchases, cash-flow budgeting, full-turn
+upgrade limits, hotels, and jail waiting.
+
+## Infrastructure strategy
+
+`InfrastructureStrategy` seeks all four railroads and both utilities before
+developing color groups. It prioritizes purchases of infrastructure and accepted
+trades that exchange color properties for missing infrastructure. Infrastructure
+is never offered away. Color landing purchases are allowed as speculative trade
+leverage without an agreed follow-up deal. Accepted offers to cash out held color
+properties take priority over buying more leverage, with older holdings disposed
+of first. The strategy acts on available engine offers; it cannot force another
+player to accept a trade or guarantee a maximum holding period.
+
+Until both infrastructure sets are owned, color mortgage purchases and
+construction are deferred. The player may redeem infrastructure mortgages to
+earn rent when doing so preserves the reserve. After **both** sets are fully
+owned, the strategy switches to forming color monopolies through available
+landing purchases, mortgage purchases, and trades. New monopoly completions take
+priority over other color acquisitions. Color trades preserve existing complete
+groups and must increase progress toward further monopolies, measured by the
+sum of squared ownership counts within color groups. Legal development is then
+allowed, favoring the rent increase per dollar spent. Completion means ownership;
+mortgages are redeemed through separate actions.
+
+The reserve is the printed purchase price of the nearest **unowned bank-held**
+railroad or utility clockwise ahead, wrapping past GO. It excludes properties
+already owned by any player and does not anticipate a GO salary or future rent.
+The reserve is recalculated against projected ownership after every option,
+including an infrastructure purchase itself, and checked again using refreshed
+state after execution. Thus buying the current railroad may be skipped if it
+would leave too little to buy the next utility. If none remains bank-held, this
+reserve is zero even if other players still hold infrastructure being sought
+through trades. Mortgage-transfer fees count in the action's cash cost.
+
+If mandatory game charges have already depleted the reserve, the strategy stops
+discretionary spending but permits cash-raising sales that do not worsen the
+shortfall. This policy protects reserves when choosing optional actions; it
+cannot prevent forced taxes, rent, or other engine charges from reducing cash.
+
+In pre-roll, a jailed player seeks early release only if an unowned railroad or
+utility is ahead of Jail **before the next GO crossing**. A held free-release
+card is preferred; otherwise the offered jail fine is paid only if the purchase
+reserve survives. If only Reading Railroad behind Jail remains unowned, or all
+infrastructure is owned, the player waits. The engine handles doubles attempts
+and mandatory release after the third failed attempt. A newly jailed player
+waits until their next pre-roll to make this decision.
+
+Populate `PropertyState.Type` (`Street`, `Railroad`, or `Utility`) and its
+`BoardPosition` from the game definition's `type` and `position` fields. Supply
+the complete property array and `GameState.BoardSize` (40 in this baseline).
+These fields let the strategy distinguish infrastructure and compute clockwise
+distances without hard-coded property IDs. Infrastructure checks load the actual
+board data and cover purchase reserves, trades, leverage disposal, phase
+transitions, and conditional jail release alongside the existing strategy checks.
+
+## References
+
+- [Hasbro classic rules](https://www.hasbro.com/common/instruct/Monopoly.pdf): core mechanics, supplies, mortgages, jail, and deck handling. This older rulebook is not the fixed-tax baseline.
+- [U.S. property financial reference](https://www.monopolyland.com/monopoly-rent-rules/): purchase prices and rent schedules.
+- [Traditional U.S. decks](https://www.monopolyland.com/list-monopoly-chance-community-chest-cards/): the 2008–2021 reference section, including the duplicate railroad card.
+
+Card labels summarize effects rather than reproduce printed text or artwork.

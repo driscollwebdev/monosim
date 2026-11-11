@@ -1,0 +1,1163 @@
+{
+  "$schema": "./monopoly.schema.json",
+  "schemaVersion": 1,
+  "edition": {
+    "id": "us-classic-traditional",
+    "name": "U.S. Classic (traditional decks, post-2008 taxes)",
+    "currency": "USD",
+    "moneyUnit": "wholeDollar",
+    "notes": [
+      "Traditional pre-2021 Community Chest and dividend Chance card; no Money Grab or Speed Die.",
+      "Fixed Income Tax 200 and Luxury Tax 100; no Free Parking jackpot or bonus for landing on GO."
+    ]
+  },
+  "sources": [
+    {
+      "url": "https://www.hasbro.com/common/instruct/Monopoly.pdf",
+      "scope": "Classic rules; older rulebook, not the tax baseline."
+    },
+    {
+      "url": "https://www.monopolyland.com/monopoly-rent-rules/",
+      "scope": "U.S. property purchase prices and rent schedules."
+    },
+    {
+      "url": "https://www.monopolyland.com/list-monopoly-chance-community-chest-cards/",
+      "scope": "Traditional U.S. card effects, 2008-2021 reference list."
+    }
+  ],
+  "initialState": {
+    "playerCash": 1500,
+    "playerPositionId": "go",
+    "playerInJail": false,
+    "propertyOwner": "bank",
+    "propertiesMortgaged": false,
+    "housesPerStreet": 0,
+    "hotelsPerStreet": 0,
+    "bankHouses": 32,
+    "bankHotels": 12,
+    "bankCashIsUnlimited": true,
+    "shuffleDecks": true,
+    "heldCardsPerPlayer": 0
+  },
+  "rules": {
+    "diceCount": 2,
+    "diceSides": 6,
+    "goSalary": 200,
+    "jailReleaseFee": 50,
+    "maxJailTurns": 3,
+    "consecutiveDoublesToJail": 3,
+    "maxHousesPerStreet": 4,
+    "maxHotelsPerStreet": 1,
+    "housesReturnedForHotel": 4,
+    "buildingResaleFraction": 0.5,
+    "mortgageInterestRate": 0.1,
+    "mortgagedPropertyRent": 0,
+    "freeParkingReward": 0,
+    "completeColorGroupRequiredToBuild": true,
+    "unmortgagedColorGroupRequiredToBuild": true,
+    "buildAndSellEvenly": true,
+    "clearColorGroupBuildingsBeforeMortgage": true,
+    "auctionDeclinedProperties": true,
+    "rentCollectibleWhileInJail": true,
+    "ordinaryCardReturn": "bottomOfDeck",
+    "retainedCardReturn": "bottomOfOriginalDeck"
+  },
+  "board": [
+    {
+      "position": 0,
+      "id": "go",
+      "name": "GO",
+      "type": "go"
+    },
+    {
+      "position": 1,
+      "id": "mediterranean-avenue",
+      "name": "Mediterranean Avenue",
+      "type": "street",
+      "colorGroup": "brown",
+      "price": 60,
+      "mortgageValue": 30,
+      "housePrice": 50,
+      "hotelPrice": 50,
+      "rent": {
+        "base": 2,
+        "completeColorGroup": 4,
+        "houses": [
+          10,
+          30,
+          90,
+          160
+        ],
+        "hotel": 250
+      }
+    },
+    {
+      "position": 2,
+      "id": "community-chest-2",
+      "name": "Community Chest",
+      "type": "drawCard",
+      "deckId": "communityChest"
+    },
+    {
+      "position": 3,
+      "id": "baltic-avenue",
+      "name": "Baltic Avenue",
+      "type": "street",
+      "colorGroup": "brown",
+      "price": 60,
+      "mortgageValue": 30,
+      "housePrice": 50,
+      "hotelPrice": 50,
+      "rent": {
+        "base": 4,
+        "completeColorGroup": 8,
+        "houses": [
+          20,
+          60,
+          180,
+          320
+        ],
+        "hotel": 450
+      }
+    },
+    {
+      "position": 4,
+      "id": "income-tax",
+      "name": "Income Tax",
+      "type": "tax",
+      "effects": [
+        {
+          "type": "transfer",
+          "amount": 200,
+          "from": "currentPlayer",
+          "to": "bank"
+        }
+      ]
+    },
+    {
+      "position": 5,
+      "id": "reading-railroad",
+      "name": "Reading Railroad",
+      "type": "railroad",
+      "price": 200,
+      "mortgageValue": 100,
+      "rent": {
+        "byRailroadsOwned": [
+          25,
+          50,
+          100,
+          200
+        ]
+      }
+    },
+    {
+      "position": 6,
+      "id": "oriental-avenue",
+      "name": "Oriental Avenue",
+      "type": "street",
+      "colorGroup": "lightBlue",
+      "price": 100,
+      "mortgageValue": 50,
+      "housePrice": 50,
+      "hotelPrice": 50,
+      "rent": {
+        "base": 6,
+        "completeColorGroup": 12,
+        "houses": [
+          30,
+          90,
+          270,
+          400
+        ],
+        "hotel": 550
+      }
+    },
+    {
+      "position": 7,
+      "id": "chance-7",
+      "name": "Chance",
+      "type": "drawCard",
+      "deckId": "chance"
+    },
+    {
+      "position": 8,
+      "id": "vermont-avenue",
+      "name": "Vermont Avenue",
+      "type": "street",
+      "colorGroup": "lightBlue",
+      "price": 100,
+      "mortgageValue": 50,
+      "housePrice": 50,
+      "hotelPrice": 50,
+      "rent": {
+        "base": 6,
+        "completeColorGroup": 12,
+        "houses": [
+          30,
+          90,
+          270,
+          400
+        ],
+        "hotel": 550
+      }
+    },
+    {
+      "position": 9,
+      "id": "connecticut-avenue",
+      "name": "Connecticut Avenue",
+      "type": "street",
+      "colorGroup": "lightBlue",
+      "price": 120,
+      "mortgageValue": 60,
+      "housePrice": 50,
+      "hotelPrice": 50,
+      "rent": {
+        "base": 8,
+        "completeColorGroup": 16,
+        "houses": [
+          40,
+          100,
+          300,
+          450
+        ],
+        "hotel": 600
+      }
+    },
+    {
+      "position": 10,
+      "id": "jail",
+      "name": "Jail / Just Visiting",
+      "type": "jail"
+    },
+    {
+      "position": 11,
+      "id": "st-charles-place",
+      "name": "St. Charles Place",
+      "type": "street",
+      "colorGroup": "pink",
+      "price": 140,
+      "mortgageValue": 70,
+      "housePrice": 100,
+      "hotelPrice": 100,
+      "rent": {
+        "base": 10,
+        "completeColorGroup": 20,
+        "houses": [
+          50,
+          150,
+          450,
+          625
+        ],
+        "hotel": 750
+      }
+    },
+    {
+      "position": 12,
+      "id": "electric-company",
+      "name": "Electric Company",
+      "type": "utility",
+      "price": 150,
+      "mortgageValue": 75,
+      "rent": {
+        "diceMultipliersByUtilitiesOwned": [
+          4,
+          10
+        ]
+      }
+    },
+    {
+      "position": 13,
+      "id": "states-avenue",
+      "name": "States Avenue",
+      "type": "street",
+      "colorGroup": "pink",
+      "price": 140,
+      "mortgageValue": 70,
+      "housePrice": 100,
+      "hotelPrice": 100,
+      "rent": {
+        "base": 10,
+        "completeColorGroup": 20,
+        "houses": [
+          50,
+          150,
+          450,
+          625
+        ],
+        "hotel": 750
+      }
+    },
+    {
+      "position": 14,
+      "id": "virginia-avenue",
+      "name": "Virginia Avenue",
+      "type": "street",
+      "colorGroup": "pink",
+      "price": 160,
+      "mortgageValue": 80,
+      "housePrice": 100,
+      "hotelPrice": 100,
+      "rent": {
+        "base": 12,
+        "completeColorGroup": 24,
+        "houses": [
+          60,
+          180,
+          500,
+          700
+        ],
+        "hotel": 900
+      }
+    },
+    {
+      "position": 15,
+      "id": "pennsylvania-railroad",
+      "name": "Pennsylvania Railroad",
+      "type": "railroad",
+      "price": 200,
+      "mortgageValue": 100,
+      "rent": {
+        "byRailroadsOwned": [
+          25,
+          50,
+          100,
+          200
+        ]
+      }
+    },
+    {
+      "position": 16,
+      "id": "st-james-place",
+      "name": "St. James Place",
+      "type": "street",
+      "colorGroup": "orange",
+      "price": 180,
+      "mortgageValue": 90,
+      "housePrice": 100,
+      "hotelPrice": 100,
+      "rent": {
+        "base": 14,
+        "completeColorGroup": 28,
+        "houses": [
+          70,
+          200,
+          550,
+          750
+        ],
+        "hotel": 950
+      }
+    },
+    {
+      "position": 17,
+      "id": "community-chest-17",
+      "name": "Community Chest",
+      "type": "drawCard",
+      "deckId": "communityChest"
+    },
+    {
+      "position": 18,
+      "id": "tennessee-avenue",
+      "name": "Tennessee Avenue",
+      "type": "street",
+      "colorGroup": "orange",
+      "price": 180,
+      "mortgageValue": 90,
+      "housePrice": 100,
+      "hotelPrice": 100,
+      "rent": {
+        "base": 14,
+        "completeColorGroup": 28,
+        "houses": [
+          70,
+          200,
+          550,
+          750
+        ],
+        "hotel": 950
+      }
+    },
+    {
+      "position": 19,
+      "id": "new-york-avenue",
+      "name": "New York Avenue",
+      "type": "street",
+      "colorGroup": "orange",
+      "price": 200,
+      "mortgageValue": 100,
+      "housePrice": 100,
+      "hotelPrice": 100,
+      "rent": {
+        "base": 16,
+        "completeColorGroup": 32,
+        "houses": [
+          80,
+          220,
+          600,
+          800
+        ],
+        "hotel": 1000
+      }
+    },
+    {
+      "position": 20,
+      "id": "free-parking",
+      "name": "Free Parking",
+      "type": "freeParking"
+    },
+    {
+      "position": 21,
+      "id": "kentucky-avenue",
+      "name": "Kentucky Avenue",
+      "type": "street",
+      "colorGroup": "red",
+      "price": 220,
+      "mortgageValue": 110,
+      "housePrice": 150,
+      "hotelPrice": 150,
+      "rent": {
+        "base": 18,
+        "completeColorGroup": 36,
+        "houses": [
+          90,
+          250,
+          700,
+          875
+        ],
+        "hotel": 1050
+      }
+    },
+    {
+      "position": 22,
+      "id": "chance-22",
+      "name": "Chance",
+      "type": "drawCard",
+      "deckId": "chance"
+    },
+    {
+      "position": 23,
+      "id": "indiana-avenue",
+      "name": "Indiana Avenue",
+      "type": "street",
+      "colorGroup": "red",
+      "price": 220,
+      "mortgageValue": 110,
+      "housePrice": 150,
+      "hotelPrice": 150,
+      "rent": {
+        "base": 18,
+        "completeColorGroup": 36,
+        "houses": [
+          90,
+          250,
+          700,
+          875
+        ],
+        "hotel": 1050
+      }
+    },
+    {
+      "position": 24,
+      "id": "illinois-avenue",
+      "name": "Illinois Avenue",
+      "type": "street",
+      "colorGroup": "red",
+      "price": 240,
+      "mortgageValue": 120,
+      "housePrice": 150,
+      "hotelPrice": 150,
+      "rent": {
+        "base": 20,
+        "completeColorGroup": 40,
+        "houses": [
+          100,
+          300,
+          750,
+          925
+        ],
+        "hotel": 1100
+      }
+    },
+    {
+      "position": 25,
+      "id": "b-and-o-railroad",
+      "name": "B. & O. Railroad",
+      "type": "railroad",
+      "price": 200,
+      "mortgageValue": 100,
+      "rent": {
+        "byRailroadsOwned": [
+          25,
+          50,
+          100,
+          200
+        ]
+      }
+    },
+    {
+      "position": 26,
+      "id": "atlantic-avenue",
+      "name": "Atlantic Avenue",
+      "type": "street",
+      "colorGroup": "yellow",
+      "price": 260,
+      "mortgageValue": 130,
+      "housePrice": 150,
+      "hotelPrice": 150,
+      "rent": {
+        "base": 22,
+        "completeColorGroup": 44,
+        "houses": [
+          110,
+          330,
+          800,
+          975
+        ],
+        "hotel": 1150
+      }
+    },
+    {
+      "position": 27,
+      "id": "ventnor-avenue",
+      "name": "Ventnor Avenue",
+      "type": "street",
+      "colorGroup": "yellow",
+      "price": 260,
+      "mortgageValue": 130,
+      "housePrice": 150,
+      "hotelPrice": 150,
+      "rent": {
+        "base": 22,
+        "completeColorGroup": 44,
+        "houses": [
+          110,
+          330,
+          800,
+          975
+        ],
+        "hotel": 1150
+      }
+    },
+    {
+      "position": 28,
+      "id": "water-works",
+      "name": "Water Works",
+      "type": "utility",
+      "price": 150,
+      "mortgageValue": 75,
+      "rent": {
+        "diceMultipliersByUtilitiesOwned": [
+          4,
+          10
+        ]
+      }
+    },
+    {
+      "position": 29,
+      "id": "marvin-gardens",
+      "name": "Marvin Gardens",
+      "type": "street",
+      "colorGroup": "yellow",
+      "price": 280,
+      "mortgageValue": 140,
+      "housePrice": 150,
+      "hotelPrice": 150,
+      "rent": {
+        "base": 24,
+        "completeColorGroup": 48,
+        "houses": [
+          120,
+          360,
+          850,
+          1025
+        ],
+        "hotel": 1200
+      }
+    },
+    {
+      "position": 30,
+      "id": "go-to-jail",
+      "name": "Go To Jail",
+      "type": "goToJail",
+      "effects": [
+        {
+          "type": "goToJail",
+          "destinationId": "jail",
+          "collectGo": false,
+          "endTurn": true
+        }
+      ]
+    },
+    {
+      "position": 31,
+      "id": "pacific-avenue",
+      "name": "Pacific Avenue",
+      "type": "street",
+      "colorGroup": "green",
+      "price": 300,
+      "mortgageValue": 150,
+      "housePrice": 200,
+      "hotelPrice": 200,
+      "rent": {
+        "base": 26,
+        "completeColorGroup": 52,
+        "houses": [
+          130,
+          390,
+          900,
+          1100
+        ],
+        "hotel": 1275
+      }
+    },
+    {
+      "position": 32,
+      "id": "north-carolina-avenue",
+      "name": "North Carolina Avenue",
+      "type": "street",
+      "colorGroup": "green",
+      "price": 300,
+      "mortgageValue": 150,
+      "housePrice": 200,
+      "hotelPrice": 200,
+      "rent": {
+        "base": 26,
+        "completeColorGroup": 52,
+        "houses": [
+          130,
+          390,
+          900,
+          1100
+        ],
+        "hotel": 1275
+      }
+    },
+    {
+      "position": 33,
+      "id": "community-chest-33",
+      "name": "Community Chest",
+      "type": "drawCard",
+      "deckId": "communityChest"
+    },
+    {
+      "position": 34,
+      "id": "pennsylvania-avenue",
+      "name": "Pennsylvania Avenue",
+      "type": "street",
+      "colorGroup": "green",
+      "price": 320,
+      "mortgageValue": 160,
+      "housePrice": 200,
+      "hotelPrice": 200,
+      "rent": {
+        "base": 28,
+        "completeColorGroup": 56,
+        "houses": [
+          150,
+          450,
+          1000,
+          1200
+        ],
+        "hotel": 1400
+      }
+    },
+    {
+      "position": 35,
+      "id": "short-line",
+      "name": "Short Line",
+      "type": "railroad",
+      "price": 200,
+      "mortgageValue": 100,
+      "rent": {
+        "byRailroadsOwned": [
+          25,
+          50,
+          100,
+          200
+        ]
+      }
+    },
+    {
+      "position": 36,
+      "id": "chance-36",
+      "name": "Chance",
+      "type": "drawCard",
+      "deckId": "chance"
+    },
+    {
+      "position": 37,
+      "id": "park-place",
+      "name": "Park Place",
+      "type": "street",
+      "colorGroup": "darkBlue",
+      "price": 350,
+      "mortgageValue": 175,
+      "housePrice": 200,
+      "hotelPrice": 200,
+      "rent": {
+        "base": 35,
+        "completeColorGroup": 70,
+        "houses": [
+          175,
+          500,
+          1100,
+          1300
+        ],
+        "hotel": 1500
+      }
+    },
+    {
+      "position": 38,
+      "id": "luxury-tax",
+      "name": "Luxury Tax",
+      "type": "tax",
+      "effects": [
+        {
+          "type": "transfer",
+          "amount": 100,
+          "from": "currentPlayer",
+          "to": "bank"
+        }
+      ]
+    },
+    {
+      "position": 39,
+      "id": "boardwalk",
+      "name": "Boardwalk",
+      "type": "street",
+      "colorGroup": "darkBlue",
+      "price": 400,
+      "mortgageValue": 200,
+      "housePrice": 200,
+      "hotelPrice": 200,
+      "rent": {
+        "base": 50,
+        "completeColorGroup": 100,
+        "houses": [
+          200,
+          600,
+          1400,
+          1700
+        ],
+        "hotel": 2000
+      }
+    }
+  ],
+  "decks": [
+    {
+      "id": "chance",
+      "cards": [
+        {
+          "id": "chance-boardwalk",
+          "description": "Boardwalk visit",
+          "effects": [
+            {
+              "type": "moveTo",
+              "destinationId": "boardwalk",
+              "direction": "forward",
+              "collectGo": true,
+              "resolveDestination": true
+            }
+          ]
+        },
+        {
+          "id": "chance-go",
+          "description": "Return to GO",
+          "effects": [
+            {
+              "type": "moveTo",
+              "destinationId": "go",
+              "direction": "forward",
+              "collectGo": true,
+              "resolveDestination": true
+            }
+          ]
+        },
+        {
+          "id": "chance-illinois",
+          "description": "Illinois visit",
+          "effects": [
+            {
+              "type": "moveTo",
+              "destinationId": "illinois-avenue",
+              "direction": "forward",
+              "collectGo": true,
+              "resolveDestination": true
+            }
+          ]
+        },
+        {
+          "id": "chance-st-charles",
+          "description": "St. Charles visit",
+          "effects": [
+            {
+              "type": "moveTo",
+              "destinationId": "st-charles-place",
+              "direction": "forward",
+              "collectGo": true,
+              "resolveDestination": true
+            }
+          ]
+        },
+        {
+          "id": "chance-nearest-railroad-1",
+          "description": "Railroad visit A",
+          "effects": [
+            {
+              "type": "moveToNearest",
+              "spaceType": "railroad",
+              "direction": "forward",
+              "collectGo": true,
+              "resolveDestination": true,
+              "rentOverride": {
+                "type": "multiplyNormalRent",
+                "multiplier": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "chance-nearest-railroad-2",
+          "description": "Railroad visit B",
+          "effects": [
+            {
+              "type": "moveToNearest",
+              "spaceType": "railroad",
+              "direction": "forward",
+              "collectGo": true,
+              "resolveDestination": true,
+              "rentOverride": {
+                "type": "multiplyNormalRent",
+                "multiplier": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "chance-nearest-utility",
+          "description": "Utility visit",
+          "effects": [
+            {
+              "type": "moveToNearest",
+              "spaceType": "utility",
+              "direction": "forward",
+              "collectGo": true,
+              "resolveDestination": true,
+              "rentOverride": {
+                "type": "diceMultiplier",
+                "multiplier": 10,
+                "rollNewDice": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "chance-dividend",
+          "description": "Dividend",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 50,
+              "from": "bank",
+              "to": "currentPlayer"
+            }
+          ]
+        },
+        {
+          "id": "chance-jail-free",
+          "description": "Jail release",
+          "effects": [
+            {
+              "type": "retain",
+              "benefit": "getOutOfJailFree",
+              "tradable": true,
+              "returnToDeckOnUse": true
+            }
+          ]
+        },
+        {
+          "id": "chance-back-three",
+          "description": "Three spaces backward",
+          "effects": [
+            {
+              "type": "moveRelative",
+              "spaces": -3,
+              "collectGo": false,
+              "resolveDestination": true
+            }
+          ]
+        },
+        {
+          "id": "chance-jail",
+          "description": "Jail entry",
+          "effects": [
+            {
+              "type": "goToJail",
+              "destinationId": "jail",
+              "collectGo": false,
+              "endTurn": true
+            }
+          ]
+        },
+        {
+          "id": "chance-repairs",
+          "description": "Building maintenance",
+          "effects": [
+            {
+              "type": "repairs",
+              "perHouse": 25,
+              "perHotel": 100,
+              "to": "bank"
+            }
+          ]
+        },
+        {
+          "id": "chance-speeding",
+          "description": "Traffic penalty",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 15,
+              "from": "currentPlayer",
+              "to": "bank"
+            }
+          ]
+        },
+        {
+          "id": "chance-reading",
+          "description": "Reading visit",
+          "effects": [
+            {
+              "type": "moveTo",
+              "destinationId": "reading-railroad",
+              "direction": "forward",
+              "collectGo": true,
+              "resolveDestination": true
+            }
+          ]
+        },
+        {
+          "id": "chance-chairman",
+          "description": "Board appointment",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 50,
+              "from": "currentPlayer",
+              "to": "eachOtherPlayer"
+            }
+          ]
+        },
+        {
+          "id": "chance-loan",
+          "description": "Loan maturity",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 150,
+              "from": "bank",
+              "to": "currentPlayer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "communityChest",
+      "cards": [
+        {
+          "id": "chest-go",
+          "description": "Return to GO",
+          "effects": [
+            {
+              "type": "moveTo",
+              "destinationId": "go",
+              "direction": "forward",
+              "collectGo": true,
+              "resolveDestination": true
+            }
+          ]
+        },
+        {
+          "id": "chest-bank-error",
+          "description": "Bank correction",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 200,
+              "from": "bank",
+              "to": "currentPlayer"
+            }
+          ]
+        },
+        {
+          "id": "chest-doctor",
+          "description": "Medical bill",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 50,
+              "from": "currentPlayer",
+              "to": "bank"
+            }
+          ]
+        },
+        {
+          "id": "chest-stock",
+          "description": "Stock proceeds",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 50,
+              "from": "bank",
+              "to": "currentPlayer"
+            }
+          ]
+        },
+        {
+          "id": "chest-jail-free",
+          "description": "Jail release",
+          "effects": [
+            {
+              "type": "retain",
+              "benefit": "getOutOfJailFree",
+              "tradable": true,
+              "returnToDeckOnUse": true
+            }
+          ]
+        },
+        {
+          "id": "chest-jail",
+          "description": "Jail entry",
+          "effects": [
+            {
+              "type": "goToJail",
+              "destinationId": "jail",
+              "collectGo": false,
+              "endTurn": true
+            }
+          ]
+        },
+        {
+          "id": "chest-holiday",
+          "description": "Holiday savings",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 100,
+              "from": "bank",
+              "to": "currentPlayer"
+            }
+          ]
+        },
+        {
+          "id": "chest-tax-refund",
+          "description": "Tax rebate",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 20,
+              "from": "bank",
+              "to": "currentPlayer"
+            }
+          ]
+        },
+        {
+          "id": "chest-birthday",
+          "description": "Birthday gifts",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 10,
+              "from": "eachOtherPlayer",
+              "to": "currentPlayer"
+            }
+          ]
+        },
+        {
+          "id": "chest-insurance",
+          "description": "Insurance payout",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 100,
+              "from": "bank",
+              "to": "currentPlayer"
+            }
+          ]
+        },
+        {
+          "id": "chest-hospital",
+          "description": "Hospital bill",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 100,
+              "from": "currentPlayer",
+              "to": "bank"
+            }
+          ]
+        },
+        {
+          "id": "chest-school",
+          "description": "Education bill",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 50,
+              "from": "currentPlayer",
+              "to": "bank"
+            }
+          ]
+        },
+        {
+          "id": "chest-consultancy",
+          "description": "Consulting income",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 25,
+              "from": "bank",
+              "to": "currentPlayer"
+            }
+          ]
+        },
+        {
+          "id": "chest-repairs",
+          "description": "Street maintenance",
+          "effects": [
+            {
+              "type": "repairs",
+              "perHouse": 40,
+              "perHotel": 115,
+              "to": "bank"
+            }
+          ]
+        },
+        {
+          "id": "chest-contest",
+          "description": "Contest award",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 10,
+              "from": "bank",
+              "to": "currentPlayer"
+            }
+          ]
+        },
+        {
+          "id": "chest-inheritance",
+          "description": "Inheritance",
+          "effects": [
+            {
+              "type": "transfer",
+              "amount": 100,
+              "from": "bank",
+              "to": "currentPlayer"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
