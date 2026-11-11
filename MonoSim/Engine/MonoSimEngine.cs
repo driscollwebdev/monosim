@@ -69,6 +69,13 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
                 return focused.TargetGroups(player, state);
             }
             return null;
+        }, player =>
+        {
+            if (strategies.TryGetValue(player.Id, out var strategy) && strategy is IStrategyMarketPolicy policy)
+            {
+                return policy;
+            }
+            return null;
         });
         order = players.Select(p => p.Id).ToArray();
         foreach (var property in definition.Properties)
@@ -339,6 +346,7 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
             "infrastructure" => new InfrastructureStrategy(this),
             "adjacent" => new AdjacentGroupStrategy(this),
             "bluegreen" => new BlueGreenStrategy(this),
+            "novice" => new NoviceStrategy(this, new Random(unchecked(randomSeed * 397 + Array.IndexOf(order, player.Id) * 7919 + 0x4E4F5649))),
             _ => throw new ArgumentException($"Unknown strategy: {player.Strategy}.")
         };
     }

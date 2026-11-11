@@ -45,6 +45,10 @@ public sealed partial class MonoSimEngine
         {
             throw new InvalidOperationException("Offers cannot be submitted after actions have been declared complete.");
         }
+        if (strategies[playerId] is ITradeInitiationPolicy { InitiatesTrades: false } && trade.OriginalOfferId is null)
+        {
+            throw new InvalidOperationException("This strategy participates in trades but does not initiate offers.");
+        }
         if (decisionPlayer != playerId && (trade.OriginalOfferId is null || trade.OtherPlayerId != decisionPlayer))
         {
             throw new InvalidOperationException("A non-acting player may only counter the acting player's offer.");
@@ -64,6 +68,10 @@ public sealed partial class MonoSimEngine
 
     private IEnumerable<StrategyAction> TradeActions(string id, GameState state)
     {
+        if (strategies[id] is ITradeInitiationPolicy { InitiatesTrades: false })
+        {
+            return [];
+        }
         var candidates = new List<StrategyAction>();
         foreach (var otherId in order.Where(p => p != id && !players[p].IsBankrupt))
         {

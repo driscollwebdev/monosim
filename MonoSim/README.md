@@ -543,7 +543,7 @@ Records supply starting balances and positions; the engine copies their arrays
 and derives mortgage totals from the definition. Supplied initial properties
 start unimproved and unmortgaged. Player array order determines turn order.
 Supported strategy identifiers are aggressive, conservative, infrastructure,
-adjacent-group, and blue-green; names such as `BlueGreenStrategy` are also accepted.
+adjacent-group, blue-green, and novice; names such as `BlueGreenStrategy` are also accepted.
 
 The .NET 10 project references the installed `Microsoft.AspNetCore.App` shared
 framework to provide Microsoft logging APIs without a separate NuGet download.
@@ -679,6 +679,57 @@ rejected. In addition to the strategy and trade checks, engine tests cover full
 games, phase declarations, doubles/jail, card chains, rent overrides, liquidation,
 binding auctions, recovery, cash/deck/building conservation, and round-limit
 scoring with shared winners.
+
+## Novice Strategy
+
+Use `Strategy = "novice"` to select `NoviceStrategy`. For a color group the
+player does not yet own, purchase probabilities are brown 1/8, light blue 1/4,
+pink 3/8, orange 1/2, red 5/8, yellow 3/4, green 7/8, and dark blue 1.
+The first railroad has probability 1/4; utilities are normally declined.
+Owning any property in a color group makes further purchases in that group
+certain, as does owning any railroad for subsequent railroad purchases.
+Blocking another player's completion of any color, railroad, or utility set
+also makes a purchase certain. Every purchase must be affordable.
+
+The novice never initiates trades. It rejects an exchange that gives the other
+player a new monopoly unless it also receives a new monopoly. Legal, safe
+mutual-monopoly exchanges use the absolute difference between color-group
+ordinals (brown 1 through dark blue 8), divided by 8. Infrastructure pairs use
+a distance factor of 1. If multiple new monopolies are completed, the highest
+pairwise distance factor applies. That factor is multiplied by the probability
+of avoiding all newly completed opposing monopolies on the next direct roll:
+`1 - reachable monopoly spaces / possible destination spaces`. For two six-sided
+dice, there are 11 equally counted destinations; dice-total weights are not used
+for this trade calculation, and movement wraps past GO.
+
+The novice rejects a combined probability below 5/8 and samples the probability
+at or above 5/8. Each exchange decision is cached for the current turn and roll,
+so repeated candidate and execution checks do not resample identical terms.
+Existing trade validation and financial-jeopardy
+checks still apply. Other legal, safe exchanges are accepted when they do not
+give the counterparty a new monopoly.
+
+Development waits until an active opponent can reach a property in a completed
+group on their next direct dice roll. Among eligible groups, the novice favors
+the lowest average building level, counting a hotel as five houses. It can make
+multiple affordable legal improvements per turn, spreading them across groups.
+
+Early jail release requires a directly reachable, affordable property the novice
+would certainly buy, with enough cash left after any release fine. It prefers a
+jail-free card to paying. It waits if the probability of landing on an opponent's
+unmortgaged property exceeds 50%; exactly 50% permits release. Probabilities use
+the configured dice distribution, including the unequal likelihood of dice
+totals. Chance and Community Chest movement is not predicted. New jail arrivals
+wait until pre-roll to consider release.
+
+Auction interest follows the same property probabilities; an interested novice
+may bid up to cash available after transfer fees. Property purchase decisions are
+sampled once per landing; auction decisions are cached per turn, roll, and bundle.
+Engine-created novices use independent player-specific random streams derived
+from the simulation seed, keeping runs reproducible without consuming dice or
+deck randomness. Direct callers can supply a `Random` instance to the constructor.
+`IStrategyMarketPolicy` carries these trade and auction decisions, while
+`ITradeInitiationPolicy` suppresses novice-originated trade offers.
 
 ## References
 

@@ -121,6 +121,7 @@ failures += BlueGreenStrategyTests.RunAll();
 failures += TradeRulesTests.RunAll();
 failures += TradeSafetyTests.RunAll();
 failures += EngineTests.RunAll();
+failures += NoviceStrategyTests.RunAll();
 return failures == 0 ? 0 : 1;
 
 static void Check(bool condition, string message)

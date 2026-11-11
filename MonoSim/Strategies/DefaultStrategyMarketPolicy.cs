@@ -5,12 +5,18 @@ namespace MonoSim.Strategies;
 
 /// <summary>Deterministic reserve-aware market decisions for the built-in strategy families.</summary>
 public sealed class DefaultStrategyMarketPolicy(bool capBidsAtValuation = false,
-    Func<Player, GameState, string[]?>? groupFocus = null) : IStrategyMarketPolicy
+    Func<Player, GameState, string[]?>? groupFocus = null,
+    Func<Player, IStrategyMarketPolicy?>? playerPolicies = null) : IStrategyMarketPolicy
 {
     private readonly Dictionary<string, string> focus = [];
 
     public decimal MaximumBid(Player player, GameState state, AssetBundle bundle, decimal valuation, decimal bankFees)
     {
+        var specific = playerPolicies?.Invoke(player);
+        if (specific is not null)
+        {
+            return specific.MaximumBid(player, state, bundle, valuation, bankFees);
+        }
         if (player.IsBankrupt || player.HasDeclaredBankruptcy || TradeSafetyAdvisor.DebtDue(player, state) > 0)
         {
             return 0;
@@ -31,6 +37,11 @@ public sealed class DefaultStrategyMarketPolicy(bool capBidsAtValuation = false,
 
     public bool AcceptTrade(Player player, GameState state, PropertyTrade trade)
     {
+        var specific = playerPolicies?.Invoke(player);
+        if (specific is not null)
+        {
+            return specific.AcceptTrade(player, state, trade);
+        }
         if (!TradeValidator.Validate(player, state, trade).IsValid)
         {
             return false;
