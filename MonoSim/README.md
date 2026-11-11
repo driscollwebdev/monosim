@@ -17,9 +17,11 @@ pwsh -NoProfile -File scripts/Test-GameData.ps1
 dotnet build
 ```
 
-The app loads the definition and prints its inventory. Build and publish outputs
-include the JSON and schema; loading uses the executable's directory. Simulation,
-strategies, action logging, and delimited results are subsequent work.
+The default console entry point loads the definition and prints its inventory.
+`MonoSimEngine` runs simulations through the API described below. Build and publish
+outputs include the JSON and schema; loading uses the executable's directory.
+Logger configuration, repeated-game orchestration, and delimited outcome exports
+belong to the caller.
 
 ## Contract
 
@@ -100,7 +102,7 @@ debt or remaining borrowing capacity. Property IDs reference board space IDs.
 
 Each `Transaction` contains `Description`, signed `Amount` (negative for a debit,
 positive for a credit), and `NewCashBalance` after the transaction. Ledger entries
-are chronological. These records store snapshots; future game logic must append
+are chronological. These records store snapshots; the engine appends
 the transaction and update `CashBalance` together, and recalculate mortgage value
 when ownership changes. Starting cash is the opening balance, before any ledger
 entries, unless explicitly recorded as an opening credit from zero.
@@ -116,7 +118,7 @@ var player = new Player
 {
     Id = "player-1",
     Name = "Alice",
-    Strategy = "baseline",
+    Strategy = "aggressive",
     CashBalance = 1500m // In game setup, read this from initialState.playerCash.
 };
 
@@ -200,8 +202,8 @@ does not mutate the input snapshots. A stale/rejected option must be rejected
 by the executor. Returned actions are intended to execute once, in the turn
 and phase for which they were selected.
 
-This execution interface is the integration point for the future game engine;
-there is not yet a production executor, turn runner, or trade-negotiation system.
+`MonoSimEngine` implements this execution interface, including current-state
+validation, cash settlement, trade negotiation, and receipt history.
 The package-free strategy checks use a test executor and can be run with:
 
 ```powershell
@@ -255,8 +257,9 @@ and any extra doubles rolls. Invoke the pre-roll delegate even when it performs
 no transaction: that captures opening cash. Keep `OwnedPropertyIds` in acquisition
 order. Create a fresh strategy instance for each simulation; its chosen group,
 opening cash, and last upgrade turn are private decision memory, separated by
-player ID. The future engine must implement trade execution and current-asset
-offers through `IStrategyActionExecutor`; the console app does not yet run games.
+player ID. `MonoSimEngine` implements trade execution and current-asset offers
+through `IStrategyActionExecutor`; the default console entry point remains an
+inventory display rather than a simulation user interface.
 
 The existing strategy-check command also runs conservative scenarios covering
 target persistence, trades and setup purchases, cash-flow budgeting, full-turn
@@ -457,10 +460,10 @@ counteroffer is still independently value-balanced. Cash/card-only originals
 have no property that could satisfy this counteroffer requirement.
 
 `RecordCompletedTrade` validates and records receipts without moving assets.
-The future executor must atomically transfer ownership, buildings, cards, cash,
+The executor must atomically transfer ownership, buildings, cards, cash,
 and bank fees, update both financial ledgers and total mortgage values, and
-persist that receipt history in its returned state. The current test executors
-exercise this contract; a production executor is still future work. Offer and
+persist that receipt history in its returned state. `MonoSimEngine` and its
+integration tests implement this contract. Offer and
 history helpers copy asset arrays so callers cannot rewrite their original
 terms by modifying the arrays used to submit them.
 
@@ -530,6 +533,152 @@ waive the two-party, valuation, funding, wash-trade, or counteroffer legality ru
 The strategy-check command includes direct-roll boundaries, wraparound, post-trade
 rent calculations, assets and bank fees, the advisory/legality distinction, and
 debt rescue across all five strategies.
+
+## Simulation engine
+
+`MonoSimEngine(Player[] players, Microsoft.Extensions.Logging.ILogger logger)`
+accepts two through six players. IDs must be unique and nonempty, balances
+nonnegative, positions valid, and initial properties/cards exclusively owned.
+Records supply starting balances and positions; the engine copies their arrays
+and derives mortgage totals from the definition. Supplied initial properties
+start unimproved and unmortgaged. Player array order determines turn order.
+Supported strategy identifiers are aggressive, conservative, infrastructure,
+adjacent-group, and blue-green; names such as `BlueGreenStrategy` are also accepted.
+
+The .NET 10 project references the installed `Microsoft.AspNetCore.App` shared
+framework to provide Microsoft logging APIs without a separate NuGet download.
+The constructor accepts any compatible logger, including `NullLogger.Instance`
+for simulations where output is intentionally discarded.
+
+```csharp
+using Microsoft.Extensions.Logging;
+using MonoSim;
+using MonoSim.Models;
+
+using var logs = LoggerFactory.Create(builder => builder.AddJsonConsole());
+var players = new Player[]
+{
+    new() { Id = "a", Name = "Alice", Strategy = "aggressive", CashBalance = 1500m },
+    new() { Id = "b", Name = "Bob", Strategy = "conservative", CashBalance = 1500m }
+};
+var engine = new MonoSimEngine(players, logs.CreateLogger<MonoSimEngine>(),
+    new MonoSimEngineOptions { RandomSeed = 42, MaximumRounds = 500 });
+GameState final = engine.Play();
+```
+
+Each engine runs once. `Play()` starts the loop; constructing an engine or calling
+`GetState()` does not advance the simulation. `GetState()` and the final result
+are defensive snapshots. Final state includes every player (including bankrupt
+players), properties, decks, bank building stock, debt history, round/turn counts,
+portfolio values, winner IDs, and the ending reason. The engine manages gameplay
+and sends events to the supplied logger; it does not choose log files, write
+outcome CSV files, or run batches of games.
+
+### Rounds, turns, and completion
+
+A round consists of each remaining player taking a turn in the original order;
+finalized bankrupt players are skipped. `RoundNumber` counts rounds. `TurnNumber`
+counts individual full player turns and remains unchanged during extra rolls.
+Each turn is pre-roll, roll/movement with all mandatory debt settlement, and
+post-roll. A doubles result that earns another roll gets one **combined**
+post-roll/pre-roll phase; the engine calls `PostRoll` once with that phase in
+the game state. It does not call both callbacks for the same interval. Three
+consecutive doubles send the player to jail. Jail doubles release and move the
+player without earning another roll; after the third failed attempt the cash
+fine is mandatory before movement. Just visiting Jail has no imprisonment effect.
+
+Strategies explicitly call `IPlayerTurnController.DeclareActionsComplete` after
+their chosen actions. Built-in strategies do this automatically. A pre-roll
+declaration permits rolling; a combined declaration permits the next roll; a
+post-roll declaration ends the turn. Merely returning an action delegate without
+declaring completion is an error. The next player cannot start early. Conservative
+Strategy's upgrade limit continues to apply to the full turn, not each roll.
+
+By default, the game ends with one non-bankrupt player. Optional `MaximumRounds`
+is checked only between completed rounds. When reached, all remaining players
+are scored using the custom trade valuations: current cash, unmortgaged property
+face values plus building resale values, mortgaged principal, and $50 per held
+jail-free card. Every player tied for the highest total is a shared winner.
+`WinnerIds` contains all winners; `WinnerId` is populated only when unique.
+`EndReason` distinguishes `LastPlayerStanding` from `RoundLimit`. Losing on
+portfolio value does not mark a solvent player bankrupt. A natural last-survivor
+win takes precedence if it happens during the final permitted round.
+
+### Debt, liquidation, and bankruptcy
+
+All cash debts are resolved in roll/movement before post-roll. Debts have a
+monotonic creation sequence; cash pays older obligations first, including partial
+payments. Due debts remain separate from trades, so asset exchanges never waive
+rent or pay a creditor in kind. A finalized player's unpaid remainder stays in
+`Debts`; active obligation arrays exclude finalized bankrupt players.
+
+Guaranteed liquidity is cash plus building resale values, unmortgaged property
+mortgage values, and $50 per held jail-free card. Already-mortgaged titles count
+as zero for this calculation even though they may sell later. Debt **strictly
+greater** than this sum requires a provisional bankruptcy declaration. Equality
+does not. Raising enough actual cash to cover remaining debts reverses the
+declaration, and completed debts are paid in age order.
+
+The engine first offers debt-funding actions to the strategy. If necessary,
+its mandatory liquidation fallback sells owned color-group buildings to the bank
+at resale values, redeems held jail cards with the bank for $50 each, and uses
+bank mortgages when guaranteed liquidity covers the debt. Clearing a group's
+buildings before a mortgage applies to the debtor's own holdings: another owner's
+buildings, possible under the custom improved-property trade rule, cannot block
+the guaranteed liquidity of an owned unimproved title.
+
+A provisionally bankrupt player can auction remaining unimproved titles, with
+complete owned color groups packaged together. Buildings must be sold back to
+the bank before the corresponding properties can be auctioned. No-bid assets
+return to the bank for $0; returned titles become unmortgaged and available, and
+returned cards go to the bottoms of their original decks. Bankruptcy is final
+only when no cash, titles, buildings, or held cards remain. Bank debts follow
+the same process as debts owed to players. Auctions may also be initiated during
+ordinary action phases without a bankruptcy declaration using `AuctionAssets`
+and an `AssetBundle`; a bundle may contain several owned properties and cards.
+
+### Markets and execution
+
+`IStrategyMarketPolicy` supplies bidding limits and trade acceptance outside the
+engine. The default policy follows the built-in strategy families' current group
+focus and reserve preferences; it may be replaced through options. As configured
+for these simulations, auction bids may use available cash rather than being
+capped at trade valuation. Transfer interest and due debts are deducted from
+bidder funding. Proxy bids clear at the runner-up's ceiling plus $1, capped at
+the winning ceiling; a sole bidder pays $1. Equal ceilings use original player
+order. A struck price is committed immediately and cannot be rescinded. Auctions
+are the explicit exception to ordinary equal-value trade pricing.
+
+The engine generates candidate cash purchases, cash sales, and property-for-property
+swaps, checks both parties' market decisions, and revalidates before execution.
+Custom strategies may submit larger legal bundles directly. `SubmitTradeOffer`
+and `AcceptTradeOffer` support explicit two-party offers and property-continuous
+counteroffers during a decision window. Settled negotiations close, while their
+completed receipt history remains available for wash-trade protection for the
+entire full turn. Market callbacks receive copied state and cannot execute
+reentrant game actions. All transfers update ownership, balances, mortgage totals,
+held cards, and cash ledgers. Trading an improved title keeps its buildings on
+that title without changing bank stock.
+
+### Logs and reproducibility
+
+Every phase, roll, movement, card draw/return, action, cash transaction, debt,
+auction, trade, bankruptcy transition, and game outcome emits an information-level
+`SimulationLogEntry` through `ILogger`. It exposes standard structured logging
+fields and a JSON message formatter. Entries carry a simulation ID, monotonic
+sequence, round, turn, roll, phase, player ID, description, and applicable signed
+amount/new cash balance. A generated or supplied random seed is logged and
+returned in game state. Bank transactions are logged explicitly; bank cash is
+unlimited. Configure a logger/provider that retains information-level events when
+the full action history is required.
+
+The options overload supports seeded randomness, deterministic dice, specified
+initial deck orders, custom strategy factories, and custom market policies.
+Dice/deck hooks support tests and replay; malformed rolls or deck orders are
+rejected. In addition to the strategy and trade checks, engine tests cover full
+games, phase declarations, doubles/jail, card chains, rent overrides, liquidation,
+binding auctions, recovery, cash/deck/building conservation, and round-limit
+scoring with shared winners.
 
 ## References
 

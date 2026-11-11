@@ -1,0 +1,18 @@
+using MonoSim.Models;
+using MonoSim.Strategies;
+
+namespace MonoSim;
+
+public sealed record MonoSimEngineOptions
+{
+    public int? RandomSeed { get; init; }
+    public string DefinitionPath { get; init; } = Path.Combine(AppContext.BaseDirectory, "Data", "monopoly-us-classic.json");
+    public bool ShuffleDecks { get; init; } = true;
+    public Func<int[]>? DiceRoller { get; init; }
+    public IReadOnlyDictionary<string, string[]>? InitialDeckOrder { get; init; }
+    public Func<Player, IStrategyActionExecutor, IPlayingStrategy>? StrategyFactory { get; init; }
+    public IStrategyMarketPolicy? MarketPolicy { get; init; }
+
+    /// <summary>Optional complete-round limit; highest portfolio value wins, with shared exact ties.</summary>
+    public long? MaximumRounds { get; init; }
+}

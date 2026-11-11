@@ -6,8 +6,41 @@ namespace MonoSim.Models;
 /// <summary>The current game state visible to the player making a decision.</summary>
 public sealed record GameState
 {
+    public string? SimulationId { get; init; }
+
+    public int? RandomSeed { get; init; }
+
     /// <summary>Identifies a full player turn; unchanged between its pre-roll and post-roll phases.</summary>
     public long TurnNumber { get; init; }
+
+    public long RoundNumber { get; init; }
+
+    public int RollNumber { get; init; }
+
+    public TurnPhase Phase { get; init; }
+
+    public string? CurrentPlayerId { get; init; }
+
+    public string? WinnerId { get; init; }
+
+    /// <summary>Contains every shared winner; WinnerId is populated only for a unique winner.</summary>
+    public string[] WinnerIds { get; init; } = [];
+
+    public GameEndReason? EndReason { get; init; }
+
+    public PlayerPortfolioValue[] PortfolioValues { get; init; } = [];
+
+    /// <summary>All players, including finalized bankrupt players, in original turn order.</summary>
+    public Player[] Players { get; init; } = [];
+
+    public int BankHouses { get; init; } = 32;
+
+    public int BankHotels { get; init; } = 12;
+
+    public DeckState[] Decks { get; init; } = [];
+
+    /// <summary>All debts in creation order, including amounts left unpaid after bankruptcy.</summary>
+    public DebtState[] Debts { get; init; } = [];
 
     /// <summary>Number of spaces on the board, used for clockwise distance calculations.</summary>
     public int BoardSize { get; init; } = 40;

@@ -74,6 +74,10 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
                 currentState = updated.GameState;
                 next = select(currentPlayer, currentState);
             }
+            if (executor is IPlayerTurnController controller)
+            {
+                controller.DeclareActionsComplete(player.Id);
+            }
         };
     }
 

@@ -8,7 +8,7 @@ namespace MonoSim.Strategies;
 /// Targets the first acquired color group and its clockwise neighbor.
 /// Create a fresh instance per simulation; target pairs persist separately per player.
 /// </summary>
-public sealed class AdjacentGroupStrategy : IPlayingStrategy
+public sealed class AdjacentGroupStrategy : IPlayingStrategy, IStrategyGroupFocus
 {
     private readonly IStrategyActionExecutor executor;
     private readonly string? fixedFirstGroup;
@@ -27,6 +27,25 @@ public sealed class AdjacentGroupStrategy : IPlayingStrategy
 
     public Action PreRoll(Player player, GameState gameState) => Decide(player, gameState, preRoll: true);
     public Action PostRoll(Player player, GameState gameState) => Decide(player, gameState, preRoll: false);
+
+    string[] IStrategyGroupFocus.TargetGroups(Player player, GameState state)
+    {
+        var pair = targets.GetValueOrDefault(player.Id);
+        if (fixedFirstGroup is not null)
+        {
+            pair = PairFor(state, fixedFirstGroup);
+        }
+        if (pair is null)
+        {
+            pair = player.OwnedPropertyIds.Select(id => Find(state, id)).Where(p => p?.ColorGroup is not null)
+                .Select(p => PairFor(state, p!.ColorGroup!)).FirstOrDefault();
+        }
+        if (pair is null)
+        {
+            return [];
+        }
+        return [pair.FirstGroup, pair.SecondGroup];
+    }
 
     private Action Decide(Player player, GameState state, bool preRoll)
     {

@@ -10,6 +10,10 @@ public sealed record StrategyAction
 
     public string? PropertyId { get; init; }
 
+    public string? CardId { get; init; }
+
+    public AssetBundle? Bundle { get; init; }
+
     /// <summary>
     /// Total cash payable by the player, including mandatory fees and interest.
     /// Property purchases, redemption, construction, and jail fines must have positive costs.
@@ -24,6 +28,8 @@ public sealed record StrategyAction
 
     /// <summary>The accepted exchange executed by a TradeProperties action.</summary>
     public PropertyTrade? Trade { get; init; }
+
+    public string? TradeOfferId { get; init; }
 
     /// <summary>
     /// A nonbinding local plan evaluated as if this landing property had been bought.

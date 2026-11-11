@@ -9,5 +9,10 @@ public enum StrategyActionType
     BuildHotel,
     UseGetOutOfJailFreeCard,
     PayJailFine,
-    TradeProperties
+    TradeProperties,
+    MortgageProperty,
+    SellBuildings,
+    RedeemGetOutOfJailFreeCard,
+    AuctionAssets,
+    DeclareBankruptcy
 }

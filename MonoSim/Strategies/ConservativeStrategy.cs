@@ -7,7 +7,7 @@ namespace MonoSim.Strategies;
 /// Focuses on one color group and funds gradual development from positive turn cash flow.
 /// Create a fresh instance for each simulation; decision memory is kept separately per player.
 /// </summary>
-public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPlayingStrategy
+public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPlayingStrategy, IStrategyGroupFocus
 {
     private readonly IStrategyActionExecutor executor = executor
         ?? throw new ArgumentNullException(nameof(executor));
@@ -16,6 +16,16 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
     public Action PreRoll(Player player, GameState gameState) => Decide(player, gameState);
 
     public Action PostRoll(Player player, GameState gameState) => Decide(player, gameState);
+
+    string[] IStrategyGroupFocus.TargetGroups(Player player, GameState state)
+    {
+        var group = memory.GetValueOrDefault(player.Id)?.TargetGroup ?? FirstOwnedGroup(player, state);
+        if (group is null)
+        {
+            return [];
+        }
+        return [group];
+    }
 
     private Action Decide(Player player, GameState state)
     {
@@ -78,6 +88,10 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
                 currentPlayer = updated.Player;
                 currentState = updated.GameState;
                 next = SelectAction(currentPlayer, currentState, plan);
+            }
+            if (executor is IPlayerTurnController controller)
+            {
+                controller.DeclareActionsComplete(player.Id);
             }
         };
     }

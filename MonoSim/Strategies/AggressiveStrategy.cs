@@ -52,6 +52,10 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
                 currentState = updated.GameState;
                 next = SelectAction(currentPlayer, updated.GameState, preRoll);
             }
+            if (executor is IPlayerTurnController controller)
+            {
+                controller.DeclareActionsComplete(player.Id);
+            }
         };
     }
 

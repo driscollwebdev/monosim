@@ -24,6 +24,12 @@ public sealed record Player
     /// <summary>Whether the player is imprisoned, rather than just visiting Jail.</summary>
     public bool IsInJail { get; init; }
 
+    public int FailedJailRolls { get; init; }
+
+    public bool HasDeclaredBankruptcy { get; init; }
+
+    public bool IsBankrupt { get; init; }
+
     /// <summary>Property space IDs from the game definition, in acquisition order.</summary>
     public string[] OwnedPropertyIds { get; init; } = [];
 

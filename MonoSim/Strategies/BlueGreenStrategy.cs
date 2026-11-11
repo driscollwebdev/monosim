@@ -4,7 +4,7 @@ using static MonoSim.Strategies.InfrastructureStrategy;
 namespace MonoSim.Strategies;
 
 /// <summary>The fixed green/dark-blue variant of Adjacent Group Strategy.</summary>
-public sealed class BlueGreenStrategy : IPlayingStrategy
+public sealed class BlueGreenStrategy : IPlayingStrategy, IStrategyGroupFocus
 {
     private readonly AdjacentGroupStrategy strategy;
 
@@ -16,6 +16,8 @@ public sealed class BlueGreenStrategy : IPlayingStrategy
     public Action PreRoll(Player player, GameState gameState) => strategy.PreRoll(player, gameState);
 
     public Action PostRoll(Player player, GameState gameState) => strategy.PostRoll(player, gameState);
+
+    string[] IStrategyGroupFocus.TargetGroups(Player player, GameState state) => ["green", "darkBlue"];
 
     private static bool IsTarget(PropertyState property) => property.ColorGroup is "green" or "darkBlue";
 
