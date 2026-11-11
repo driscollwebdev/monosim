@@ -121,7 +121,10 @@ return failures == 0 ? 0 : 1;
 
 static void Check(bool condition, string message)
 {
-    if (!condition) throw new Exception(message);
+    if (!condition)
+    {
+        throw new Exception(message);
+    }
 }
 
 static Player PlayerWith(decimal cash, bool inJail = false) => new()
@@ -153,14 +156,19 @@ sealed class FakeExecutor(Player player, GameState state) : IStrategyActionExecu
     public StrategyTurnState Execute(string playerId, StrategyAction action)
     {
         if (playerId != Player.Id || !State.AvailableActions.Contains(action) || action.Cost > Player.CashBalance)
+        {
             throw new InvalidOperationException("Invalid action.");
+        }
+
         Executed.Add(action.Id);
         var balance = Player.CashBalance - action.Cost;
+        var isInJail = action.Type is StrategyActionType.PayJailFine or StrategyActionType.UseGetOutOfJailFreeCard ? false : Player.IsInJail;
+        var ledger = action.Cost == 0 ? Player.FinancialLedger : [.. Player.FinancialLedger, new Transaction(action.Id, -action.Cost, balance)];
         Player = Player with
         {
             CashBalance = balance,
-            IsInJail = action.Type is StrategyActionType.PayJailFine or StrategyActionType.UseGetOutOfJailFreeCard ? false : Player.IsInJail,
-            FinancialLedger = action.Cost == 0 ? Player.FinancialLedger : [.. Player.FinancialLedger, new Transaction(action.Id, -action.Cost, balance)]
+            IsInJail = isInJail,
+            FinancialLedger = ledger
         };
         State = AfterExecute?.Invoke(action) ?? State with
         {

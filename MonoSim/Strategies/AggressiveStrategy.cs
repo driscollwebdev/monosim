@@ -53,7 +53,10 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
         if (player.IsInJail)
         {
             // Release before the next roll. Do not spend the release money after being jailed.
-            if (!preRoll) return null;
+            if (!preRoll)
+            {
+                return null;
+            }
 
             var card = state.AvailableActions
                 .Where(a => a.Type == StrategyActionType.UseGetOutOfJailFreeCard && a.Cost == 0)

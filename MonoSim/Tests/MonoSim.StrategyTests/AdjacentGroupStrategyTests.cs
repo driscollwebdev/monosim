@@ -211,7 +211,11 @@ internal static class AdjacentGroupStrategyTests
         return failures;
     }
 
-    private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+    private static void Check(bool condition, string message) { if (!condition)
+        {
+            throw new Exception(message);
+        }
+    }
     private static string[] Group(string group) => Board.Where(p => p.ColorGroup == group).Select(p => p.PropertyId).ToArray();
     private static string[] Pair(string first, string second) => [.. Group(first), .. Group(second)];
     private static void Hotels(TestEngine e, params string[] groups) => e.State = e.State with

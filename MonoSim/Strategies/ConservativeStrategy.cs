@@ -23,7 +23,9 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
 
         var plan = memory.GetValueOrDefault(player.Id) ?? new DecisionMemory(null, state.TurnNumber, player.CashBalance, null);
         if (plan.TurnNumber != state.TurnNumber)
+        {
             plan = plan with { TurnNumber = state.TurnNumber, OpeningCash = player.CashBalance };
+        }
 
         // OwnedPropertyIds retain acquisition order, so an existing player's first group is stable.
         plan = plan with { TargetGroup = plan.TargetGroup ?? FirstOwnedGroup(player, state) };
@@ -40,22 +42,32 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
                 var updated = executor.Execute(currentPlayer.Id, next);
                 if (updated.Player.Id != player.Id || updated.Player.CashBalance != currentPlayer.CashBalance - next.Cost ||
                     updated.GameState.TurnNumber != state.TurnNumber)
+                {
                     throw new InvalidOperationException("The engine must return the acting player with the action cost applied in the same turn.");
+                }
 
                 if (next.Type == StrategyActionType.TradeProperties &&
                     !next.Trade!.PropertyIdsReceived.All(id => updated.Player.OwnedPropertyIds.Contains(id)))
+                {
                     throw new InvalidOperationException("The engine must transfer the properties in the accepted trade.");
+                }
 
                 if (next.Type is StrategyActionType.BuyProperty or StrategyActionType.BuyMortgagedProperty &&
                     !updated.Player.OwnedPropertyIds.Contains(next.PropertyId!))
+                {
                     throw new InvalidOperationException("The engine must transfer the purchased property to the player.");
+                }
 
                 if (next.Type == StrategyActionType.BuyProperty &&
                     (plan.TargetGroup is null || IsFullyDeveloped(currentPlayer, currentState, plan.TargetGroup)))
+                {
                     plan = plan with { TargetGroup = FindProperty(currentState, next.PropertyId)?.ColorGroup };
+                }
 
                 if (next.Type is StrategyActionType.BuildHouse or StrategyActionType.BuildHotel)
+                {
                     plan = plan with { LastUpgradeTurn = state.TurnNumber };
+                }
 
                 memory[player.Id] = plan;
                 currentPlayer = updated.Player;
@@ -68,7 +80,10 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
     private static StrategyAction? SelectAction(Player player, GameState state, DecisionMemory plan)
     {
         // Voluntary release is never selected. The engine rolls doubles and enforces the third failed attempt.
-        if (player.IsInJail) return null;
+        if (player.IsInJail)
+        {
+            return null;
+        }
 
         var options = state.AvailableActions.Where(a => a.Cost <= player.CashBalance).ToArray();
         var target = plan.TargetGroup;
@@ -79,7 +94,11 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
         }
 
         var group = state.Properties.Where(p => p.ColorGroup == target).ToArray();
-        if (group.Length == 0) return null;
+        if (group.Length == 0)
+        {
+            return null;
+        }
+
         var owned = player.OwnedPropertyIds.ToHashSet(StringComparer.Ordinal);
         var complete = group.All(p => owned.Contains(p.PropertyId));
         if (IsFullyDeveloped(player, state, target))
@@ -93,11 +112,17 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
                 (a.Type == StrategyActionType.BuyProperty && FindProperty(state, a.PropertyId) is { IsAvailable: true } ||
                  a.Type == StrategyActionType.BuyMortgagedProperty && FindProperty(state, a.PropertyId) is { IsOwned: true, IsMortgaged: true } &&
                  !owned.Contains(a.PropertyId!) && state.OtherPlayers.Any(p => p.OwnedPropertyIds.Contains(a.PropertyId!))))).FirstOrDefault();
-            if (purchase is not null) return purchase;
+            if (purchase is not null)
+            {
+                return purchase;
+            }
 
             var trade = Ordered(options.Where(a => a.Type == StrategyActionType.TradeProperties && a.Trade is not null &&
                 a.Cost == a.Trade.NetCost && IsHelpfulTrade(player, state, target, a.Trade, owned, requireCompletion: false))).FirstOrDefault();
-            if (trade is not null) return trade;
+            if (trade is not null)
+            {
+                return trade;
+            }
 
             return Ordered(options.Where(a => a.Type == StrategyActionType.BuyProperty && a.Cost > 0 &&
                 IsTradeSetup(player, state, target, a))).FirstOrDefault();
@@ -106,9 +131,16 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
         var redemption = Ordered(options.Where(a => a.Type == StrategyActionType.UnmortgageProperty && a.Cost > 0 &&
             owned.Contains(a.PropertyId ?? "") && FindProperty(state, a.PropertyId) is { IsMortgaged: true } p &&
             p.ColorGroup == target && a.Cost <= player.CashBalance - plan.OpeningCash)).FirstOrDefault();
-        if (redemption is not null) return redemption;
+        if (redemption is not null)
+        {
+            return redemption;
+        }
 
-        if (plan.LastUpgradeTurn == state.TurnNumber || group.Any(p => p.IsMortgaged)) return null;
+        if (plan.LastUpgradeTurn == state.TurnNumber || group.Any(p => p.IsMortgaged))
+        {
+            return null;
+        }
+
         return options.Where(a => a.Type is StrategyActionType.BuildHouse or StrategyActionType.BuildHotel &&
                 a.Cost > 0 && a.Cost <= player.CashBalance - plan.OpeningCash &&
                 owned.Contains(a.PropertyId ?? "") && FindProperty(state, a.PropertyId)?.ColorGroup == target)
@@ -123,11 +155,21 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
         var property = FindProperty(state, action.PropertyId);
         var trade = action.FollowUpTrade;
         if (property is not { IsAvailable: true, ColorGroup: not null } || property.ColorGroup == target || trade is null ||
-            !trade.PropertyIdsGiven.Contains(property.PropertyId)) return false;
+            !trade.PropertyIdsGiven.Contains(property.PropertyId))
+        {
+            return false;
+        }
 
         // Buy an unrelated property only when it is the last available member and a concrete deal uses it.
-        if (state.Properties.Any(p => p.ColorGroup == property.ColorGroup && p.PropertyId != property.PropertyId && p.IsAvailable)) return false;
-        if (action.Cost + Math.Max(0, trade.NetCost) > player.CashBalance) return false;
+        if (state.Properties.Any(p => p.ColorGroup == property.ColorGroup && p.PropertyId != property.PropertyId && p.IsAvailable))
+        {
+            return false;
+        }
+
+        if (action.Cost + Math.Max(0, trade.NetCost) > player.CashBalance)
+        {
+            return false;
+        }
 
         var afterPurchase = player.OwnedPropertyIds.Append(property.PropertyId).ToHashSet(StringComparer.Ordinal);
         return IsHelpfulTrade(player with { CashBalance = player.CashBalance - action.Cost }, state, target, trade, afterPurchase, requireCompletion: true);
@@ -141,22 +183,37 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
             trade.CashPaid + trade.BankFees > player.CashBalance || trade.PropertyIdsReceived.Length == 0 ||
             trade.PropertyIdsGiven.Distinct().Count() != trade.PropertyIdsGiven.Length ||
             trade.PropertyIdsReceived.Distinct().Count() != trade.PropertyIdsReceived.Length ||
-            trade.PropertyIdsGiven.Intersect(trade.PropertyIdsReceived).Any()) return false;
+            trade.PropertyIdsGiven.Intersect(trade.PropertyIdsReceived).Any())
+        {
+            return false;
+        }
 
         if (trade.PropertyIdsGiven.Any(id => !owned.Contains(id) || FindProperty(state, id) is not { } p || p.ColorGroup == target) ||
-            trade.PropertyIdsReceived.Any(id => !other.OwnedPropertyIds.Contains(id) || owned.Contains(id) || FindProperty(state, id)?.ColorGroup != target)) return false;
+            trade.PropertyIdsReceived.Any(id => !other.OwnedPropertyIds.Contains(id) || owned.Contains(id) || FindProperty(state, id)?.ColorGroup != target))
+        {
+            return false;
+        }
 
         // Equal printed property values plus cash make the exchange value-neutral before mandatory bank fees.
         var given = trade.PropertyIdsGiven.Sum(id => FindProperty(state, id)!.SalePrice) + trade.CashPaid;
         var received = trade.PropertyIdsReceived.Sum(id => FindProperty(state, id)!.SalePrice) + trade.CashReceived;
-        if (given != received) return false;
+        if (given != received)
+        {
+            return false;
+        }
 
         var after = owned.Except(trade.PropertyIdsGiven).Concat(trade.PropertyIdsReceived).ToHashSet(StringComparer.Ordinal);
         var targetIds = state.Properties.Where(p => p.ColorGroup == target).Select(p => p.PropertyId).ToArray();
         if (targetIds.Count(after.Contains) <= targetIds.Count(owned.Contains) ||
-            requireCompletion && !targetIds.All(after.Contains)) return false;
+            requireCompletion && !targetIds.All(after.Contains))
+        {
+            return false;
+        }
 
-        if (!requireCompletion) return true;
+        if (!requireCompletion)
+        {
+            return true;
+        }
 
         var otherBefore = other.OwnedPropertyIds.ToHashSet(StringComparer.Ordinal);
         var otherAfter = otherBefore.Except(trade.PropertyIdsReceived).Concat(trade.PropertyIdsGiven).ToHashSet(StringComparer.Ordinal);

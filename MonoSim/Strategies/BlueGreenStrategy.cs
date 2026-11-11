@@ -23,12 +23,18 @@ public sealed class BlueGreenStrategy : IPlayingStrategy
     {
         var targets = state.Properties.Where(IsTarget).ToArray();
         var cashAfter = player.CashBalance - cost;
-        if (cashAfter < 0) return false;
+        if (cashAfter < 0)
+        {
+            return false;
+        }
 
         var onFinalSide = player.BoardPosition >= targets.Min(p => p.BoardPosition);
         var acquiresTarget = targets.Any(p => after.Contains(p.PropertyId) && !before.Contains(p.PropertyId));
         // The acquisition fund can be deployed on any target on this side, without group-order requirements.
-        if (onFinalSide && acquiresTarget) return true;
+        if (onFinalSide && acquiresTarget)
+        {
+            return true;
+        }
 
         decimal Required(HashSet<string> owned)
         {
@@ -37,7 +43,10 @@ public sealed class BlueGreenStrategy : IPlayingStrategy
         }
 
         var reserveAfter = Required(after);
-        if (cashAfter >= reserveAfter) return true;
+        if (cashAfter >= reserveAfter)
+        {
+            return true;
+        }
         // Forced charges may already have depleted cash; sales can still improve the shortfall.
         return cost <= 0 && Math.Max(0, reserveAfter - cashAfter) <= Math.Max(0, Required(before) - player.CashBalance);
     }

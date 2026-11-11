@@ -115,8 +115,7 @@ internal static class ConservativeStrategyTests
                 foreach (var mortgaged in new[] { false, true })
                 {
                     var engine = Engine(mortgaged ? ["blue1", "blue2", "blue3"] : ["blue1"], [Build("blue1")]);
-                    if (mortgaged) engine.State = engine.State with { Properties = engine.State.Properties.Select(p => p.PropertyId == "blue2" ? p with { IsMortgaged = true } : p).ToArray() };
-                    var strategy = new ConservativeStrategy(engine);
+                    if (mortgaged) { engine.State = engine.State with { Properties = engine.State.Properties.Select(p => p.PropertyId == "blue2" ? p with { IsMortgaged = true } : p).ToArray() }; } var strategy = new ConservativeStrategy(engine);
                     strategy.PreRoll(engine.Player, engine.State)();
                     engine.Player = engine.Player with { CashBalance = 1200 };
                     strategy.PostRoll(engine.Player, engine.State)();
@@ -178,7 +177,10 @@ internal static class ConservativeStrategyTests
 
     private static void Check(bool condition, string message)
     {
-        if (!condition) throw new Exception(message);
+        if (!condition)
+        {
+            throw new Exception(message);
+        }
     }
 
     private static StrategyAction Buy(string id, decimal cost = 100) => new() { Id = $"buy-{id}", Type = StrategyActionType.BuyProperty, PropertyId = id, Cost = cost };
@@ -213,7 +215,10 @@ internal static class ConservativeStrategyTests
         public StrategyTurnState Execute(string playerId, StrategyAction action)
         {
             if (playerId != Player.Id || !State.AvailableActions.Contains(action) || action.Cost > Player.CashBalance)
+            {
                 throw new InvalidOperationException("Invalid option.");
+            }
+
             Executed.Add(action.Id);
             var balance = Player.CashBalance - action.Cost;
             Player = Player with { CashBalance = balance, FinancialLedger = [.. Player.FinancialLedger, new(action.Id, -action.Cost, balance)] };
@@ -234,9 +239,15 @@ internal static class ConservativeStrategyTests
                 }] };
             }
             if (action.Type == StrategyActionType.BuildHouse)
+            {
                 State = State with { Properties = State.Properties.Select(p => p.PropertyId == action.PropertyId ? p with { HouseCount = p.HouseCount + 1 } : p).ToArray() };
+            }
+
             if (action.Type == StrategyActionType.BuildHotel)
+            {
                 State = State with { Properties = State.Properties.Select(p => p.PropertyId == action.PropertyId ? p with { HouseCount = 0, HotelCount = 1 } : p).ToArray() };
+            }
+
             State = State with { AvailableActions = AfterAction?.Invoke(action) ?? State.AvailableActions.Where(a => a.Id != action.Id).ToArray() };
             return new(Player, State);
         }

@@ -157,7 +157,11 @@ internal static class BlueGreenStrategyTests
         return failures;
     }
 
-    private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+    private static void Check(bool condition, string message) { if (!condition)
+        {
+            throw new Exception(message);
+        }
+    }
     private static TestEngine Run(decimal cash, int position, string[] owned, StrategyAction[] actions, string[]? otherOwned = null)
     {
         var e = Engine(cash, position, owned, actions, otherOwned);

@@ -184,7 +184,11 @@ internal static class InfrastructureStrategyTests
         return failures;
     }
 
-    private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+    private static void Check(bool condition, string message) { if (!condition)
+        {
+            throw new Exception(message);
+        }
+    }
     internal static StrategyAction Buy(string id) => new() { Id = $"buy-{id}", Type = StrategyActionType.BuyProperty, PropertyId = id, Cost = Board.Single(p => p.PropertyId == id).SalePrice };
     internal static StrategyAction Build(string id) => new() { Id = $"build-{id}", Type = StrategyActionType.BuildHouse, PropertyId = id, Cost = 50, RentIncrease = 24 };
     internal static PropertyTrade Deal(string[] given, string[] received, decimal paid = 0, decimal receivedCash = 0, decimal fees = 0) => new()
@@ -236,12 +240,19 @@ internal static class InfrastructureStrategyTests
 
         public StrategyTurnState Execute(string playerId, StrategyAction action)
         {
-            if (playerId != Player.Id || !State.AvailableActions.Contains(action) || action.Cost > Player.CashBalance) throw new InvalidOperationException("Invalid option.");
+            if (playerId != Player.Id || !State.AvailableActions.Contains(action) || action.Cost > Player.CashBalance)
+            {
+                throw new InvalidOperationException("Invalid option.");
+            }
+
             Executed.Add(action.Id);
             var balance = Player.CashBalance - action.Cost;
             Player = Player with { CashBalance = balance, FinancialLedger = [.. Player.FinancialLedger, new(action.Id, -action.Cost, balance)] };
             if (action.Type is StrategyActionType.UseGetOutOfJailFreeCard or StrategyActionType.PayJailFine)
+            {
                 Player = Player with { IsInJail = false };
+            }
+
             if (action.Type is StrategyActionType.BuyProperty or StrategyActionType.BuyMortgagedProperty)
             {
                 Player = Player with { OwnedPropertyIds = [.. Player.OwnedPropertyIds, action.PropertyId!] };
@@ -257,11 +268,20 @@ internal static class InfrastructureStrategyTests
                 } : p).ToArray() };
             }
             if (action.Type == StrategyActionType.BuildHouse)
+            {
                 State = State with { Properties = State.Properties.Select(p => p.PropertyId == action.PropertyId ? p with { HouseCount = p.HouseCount + 1 } : p).ToArray() };
+            }
+
             if (action.Type == StrategyActionType.BuildHotel)
+            {
                 State = State with { Properties = State.Properties.Select(p => p.PropertyId == action.PropertyId ? p with { HouseCount = 0, HotelCount = 1 } : p).ToArray() };
+            }
+
             if (action.Type == StrategyActionType.UnmortgageProperty)
+            {
                 State = State with { Properties = State.Properties.Select(p => p.PropertyId == action.PropertyId ? p with { IsMortgaged = false } : p).ToArray() };
+            }
+
             State = State with { AvailableActions = AfterAction?.Invoke(action) ?? State.AvailableActions.Where(a => a.Id != action.Id).ToArray() };
             return new(Player, State);
         }
