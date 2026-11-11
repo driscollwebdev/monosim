@@ -4,7 +4,7 @@ using MonoSim.Strategies;
 
 internal static class InfrastructureStrategyTests
 {
-    private static readonly PropertyState[] Board = LoadBoard();
+    internal static readonly PropertyState[] Board = LoadBoard();
     private static readonly string[] Infrastructure = Board.Where(p => p.Type != PropertyType.Street).Select(p => p.PropertyId).ToArray();
 
     public static int RunAll()
@@ -185,13 +185,13 @@ internal static class InfrastructureStrategyTests
     }
 
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
-    private static StrategyAction Buy(string id) => new() { Id = $"buy-{id}", Type = StrategyActionType.BuyProperty, PropertyId = id, Cost = Board.Single(p => p.PropertyId == id).SalePrice };
-    private static StrategyAction Build(string id) => new() { Id = $"build-{id}", Type = StrategyActionType.BuildHouse, PropertyId = id, Cost = 50, RentIncrease = 24 };
-    private static PropertyTrade Deal(string[] given, string[] received, decimal paid = 0, decimal receivedCash = 0, decimal fees = 0) => new()
+    internal static StrategyAction Buy(string id) => new() { Id = $"buy-{id}", Type = StrategyActionType.BuyProperty, PropertyId = id, Cost = Board.Single(p => p.PropertyId == id).SalePrice };
+    internal static StrategyAction Build(string id) => new() { Id = $"build-{id}", Type = StrategyActionType.BuildHouse, PropertyId = id, Cost = 50, RentIncrease = 24 };
+    internal static PropertyTrade Deal(string[] given, string[] received, decimal paid = 0, decimal receivedCash = 0, decimal fees = 0) => new()
     { OtherPlayerId = "other", PropertyIdsGiven = given, PropertyIdsReceived = received, CashPaid = paid, CashReceived = receivedCash, BankFees = fees };
-    private static StrategyAction Trade(PropertyTrade trade) => new() { Id = "trade", Type = StrategyActionType.TradeProperties, Trade = trade, Cost = trade.NetCost };
-    private static StrategyAction Card() => new() { Id = "card", Type = StrategyActionType.UseGetOutOfJailFreeCard, Cost = 0 };
-    private static StrategyAction Fine() => new() { Id = "fine", Type = StrategyActionType.PayJailFine, Cost = 50 };
+    internal static StrategyAction Trade(PropertyTrade trade) => new() { Id = "trade", Type = StrategyActionType.TradeProperties, Trade = trade, Cost = trade.NetCost };
+    internal static StrategyAction Card() => new() { Id = "card", Type = StrategyActionType.UseGetOutOfJailFreeCard, Cost = 0 };
+    internal static StrategyAction Fine() => new() { Id = "fine", Type = StrategyActionType.PayJailFine, Cost = 50 };
 
     private static TestEngine Jailed(decimal cash, StrategyAction[] actions, string[]? otherOwned = null)
     {
@@ -208,7 +208,7 @@ internal static class InfrastructureStrategyTests
         return e;
     }
 
-    private static TestEngine Engine(decimal cash, int position, string[] owned, StrategyAction[] actions, string[]? otherOwned = null)
+    internal static TestEngine Engine(decimal cash, int position, string[] owned, StrategyAction[] actions, string[]? otherOwned = null)
     {
         var player = new Player { Id = "infra", Name = "Infra", Strategy = "infrastructure", CashBalance = cash, BoardPosition = position, OwnedPropertyIds = owned };
         var other = new Player { Id = "other", Name = "Other", Strategy = "other", CashBalance = 5000, OwnedPropertyIds = otherOwned ?? [] };
@@ -227,7 +227,7 @@ internal static class InfrastructureStrategyTests
         }).ToArray();
     }
 
-    private sealed class TestEngine(Player player, GameState state) : IStrategyActionExecutor
+    internal sealed class TestEngine(Player player, GameState state) : IStrategyActionExecutor
     {
         public Player Player { get; set; } = player;
         public GameState State { get; set; } = state;
@@ -258,6 +258,8 @@ internal static class InfrastructureStrategyTests
             }
             if (action.Type == StrategyActionType.BuildHouse)
                 State = State with { Properties = State.Properties.Select(p => p.PropertyId == action.PropertyId ? p with { HouseCount = p.HouseCount + 1 } : p).ToArray() };
+            if (action.Type == StrategyActionType.BuildHotel)
+                State = State with { Properties = State.Properties.Select(p => p.PropertyId == action.PropertyId ? p with { HouseCount = 0, HotelCount = 1 } : p).ToArray() };
             if (action.Type == StrategyActionType.UnmortgageProperty)
                 State = State with { Properties = State.Properties.Select(p => p.PropertyId == action.PropertyId ? p with { IsMortgaged = false } : p).ToArray() };
             State = State with { AvailableActions = AfterAction?.Invoke(action) ?? State.AvailableActions.Where(a => a.Id != action.Id).ToArray() };

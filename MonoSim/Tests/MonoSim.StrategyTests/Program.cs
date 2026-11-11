@@ -115,6 +115,8 @@ foreach (var test in tests)
 Console.WriteLine($"{tests.Length - failures}/{tests.Length} strategy checks passed.");
 failures += ConservativeStrategyTests.RunAll();
 failures += InfrastructureStrategyTests.RunAll();
+failures += AdjacentGroupStrategyTests.RunAll();
+failures += BlueGreenStrategyTests.RunAll();
 return failures == 0 ? 0 : 1;
 
 static void Check(bool condition, string message)

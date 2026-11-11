@@ -313,6 +313,101 @@ distances without hard-coded property IDs. Infrastructure checks load the actual
 board data and cover purchase reserves, trades, leverage disposal, phase
 transitions, and conditional jail release alongside the existing strategy checks.
 
+## Adjacent group strategy
+
+`AdjacentGroupStrategy` anchors its targets on the first color property acquired
+and the next color group clockwise. Groups may straddle a corner or GO. For
+example, light blue pairs with pink; dark blue pairs with brown. Once chosen,
+the pair persists for that player. A declined or unaffordable first purchase
+does not commit a pair. Create a new instance per simulation; decision memory
+is separate for each player ID. Existing players seed their focus from the first
+color property in their acquisition-ordered `OwnedPropertyIds`.
+
+The player buys and trades for both target groups before pursuing their secondary
+objective. Outside landing purchases are allowed as speculative leverage, with
+accepted trades or cash sales used to dispose of that leverage promptly. These
+purchases remain possible while working on the secondary objective. Target streets
+and any already acquired contained infrastructure are never traded away.
+
+Contained infrastructure means **every railroad or utility within the clockwise
+span** from the first street of the first group to the last street of the second.
+It includes utilities embedded within a group, not just the gap between groups.
+For pink/orange, both Electric Company and Pennsylvania Railroad qualify.
+Some consecutive pairs, such as orange/red, contain no infrastructure.
+
+After both groups are owned, acquiring a contained asset and improving target
+streets have equal priority. Among these options, lower cash cost wins, followed
+by ordinal option ID; neither action category has a fixed preference. The engine
+supplies legal building options, enforcing even development, bank stock, and
+mortgage restrictions. Target mortgage redemptions are considered to enable
+rent and legal development.
+
+The primary strategy is complete when both groups are owned and **either** at
+least one contained railroad/utility is owned **or** every target street has an
+unmortgaged hotel. Owning all contained assets is not required. Pairs containing
+no infrastructure finish through full development. After completion, additional
+color monopolies can be pursued through mortgage purchases, accepted trades, and
+available landing purchases. Completion is re-evaluated after each action, so
+expansion can begin immediately after satisfying either route. Remaining target
+upgrades and contained acquisitions are still considered; new monopoly completions
+receive priority over ordinary acquisitions.
+
+The cash reserve protects the printed price of the nearest unowned street in
+either target group clockwise ahead, wrapping past GO. The same reserve checks
+as Infrastructure Strategy apply, including recalculation after purchases, trade
+fees, and cash-raising sales when forced charges have depleted cash. No reserve
+is needed for streets already owned by another player; acquiring those requires
+an accepted offer. The initial purchase must also leave the reserve for the next
+street in its proposed pair. The player does not assume future GO salary or rent.
+
+The jail condition is identical to Infrastructure Strategy: release in pre-roll
+only when unowned infrastructure lies ahead of Jail before GO, prefer a card,
+otherwise pay the fine if the target-street reserve survives. The release trigger
+continues to refer to railroads/utilities, not target color streets. Otherwise
+the engine handles doubles attempts and mandatory third-attempt release.
+
+The strategy checks use the actual board definition to cover consecutive pairs,
+wraparound, contained assets, leverage, reserve boundaries, equal secondary
+priorities, both completion routes, and jail behavior. Engine integration uses
+the existing `IStrategyActionExecutor` contract.
+
+## Blue-Green strategy
+
+`BlueGreenStrategy` is the fixed-target variant of Adjacent Group Strategy. It
+always targets Pacific Avenue, North Carolina Avenue, Pennsylvania Avenue,
+Park Place, and Boardwalk (`green` and `darkBlue` in the definition), regardless
+of previously acquired properties. Green and dark blue acquisitions can be
+interleaved; completing one monopoly is not a prerequisite for buying into the
+other. Short Line is the contained infrastructure for this pair.
+
+Before reaching Pacific Avenue on the final side, optional spending must leave
+at least **$400** while any of the five targets remains unowned by the player.
+This floor also applies to leverage purchases, target trades made elsewhere,
+and voluntary jail fines. Accepted cash sales can restore an already depleted
+fund. Forced engine charges can still reduce cash below the floor; the policy
+then stops optional debits until the reserve is restored.
+
+On the final side, a target purchase or accepted trade acquiring a target may
+spend the reserved cash, provided its full net cost is affordable. It need not
+leave enough to buy the next target: the player may buy one or several as funds
+allow. Outside purchases and other spending still preserve the printed price of
+the next bank-available target. No future GO salary or rent is assumed. After GO,
+the $400 pre-arrival floor applies again if targets remain to be acquired.
+Once all five are owned, the acquisition floor is removed so it does not block
+development or the remaining secondary objective.
+
+Leverage handling, target protection, legal upgrades, and completion rules reuse
+Adjacent Group Strategy. After owning both groups, buying Short Line and improving
+a target have equal priority. Either owning Short Line or fully improving all
+five target streets completes the primary strategy and unlocks further monopolies.
+The same conditional jail-release trigger is inherited; paying the fine also
+respects the applicable Blue-Green reserve. The implementation shares the adjacent
+strategy's decision logic and overrides its target selection and reserve policy.
+
+The strategy-check command includes fixed targets, both acquisition orders,
+reserve boundaries, trades and fees, final-side spending, subsequent circuits,
+development, expansion, and jail decisions for this variant.
+
 ## References
 
 - [Hasbro classic rules](https://www.hasbro.com/common/instruct/Monopoly.pdf): core mechanics, supplies, mortgages, jail, and deck handling. This older rulebook is not the fixed-tax baseline.

@@ -16,11 +16,19 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
     {
         ArgumentNullException.ThrowIfNull(player);
         ArgumentNullException.ThrowIfNull(state);
+        return ExecuteActions(executor, player, state, (p, s) => SelectAction(p, s, preRoll));
+    }
+
+    internal static Action ExecuteActions(IStrategyActionExecutor executor, Player player, GameState state,
+        Func<Player, GameState, StrategyAction?> select,
+        Action<StrategyAction, GameState, StrategyTurnState>? afterExecute = null)
+    {
         ValidateBoard(player, state);
-        var first = SelectAction(player, state, preRoll);
+        var first = select(player, state);
         return () =>
         {
             var currentPlayer = player;
+            var currentState = state;
             var next = first;
             while (next is not null)
             {
@@ -43,8 +51,10 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
                     throw new InvalidOperationException("The engine must release the player from jail.");
 
                 ValidateBoard(updated.Player, updated.GameState);
+                afterExecute?.Invoke(next, currentState, updated);
                 currentPlayer = updated.Player;
-                next = SelectAction(currentPlayer, updated.GameState, preRoll);
+                currentState = updated.GameState;
+                next = select(currentPlayer, currentState);
             }
         };
     }
@@ -55,17 +65,7 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
         if (player.IsInJail)
         {
             if (!preRoll) return null;
-            // Ahead of Jail means before the next GO crossing, not a property on the next circuit.
-            if (!state.Properties.Any(p => IsInfrastructure(p) && p.IsAvailable && !owned.Contains(p.PropertyId) &&
-                p.BoardPosition > player.BoardPosition)) return null;
-
-            return state.AvailableActions
-                .Where(a => a.Type == StrategyActionType.UseGetOutOfJailFreeCard && a.Cost == 0 ||
-                    a.Type == StrategyActionType.PayJailFine && a.Cost > 0 && PreservesReserve(player, state, a.Cost, owned, owned))
-                .OrderBy(a => a.Type == StrategyActionType.UseGetOutOfJailFreeCard ? 0 : 1)
-                .ThenBy(a => a.Cost)
-                .ThenBy(a => a.Id, StringComparer.Ordinal)
-                .FirstOrDefault();
+            return SelectJailRelease(player, state, cost => PreservesReserve(player, state, cost, owned, owned));
         }
 
         var infrastructure = state.Properties.Where(IsInfrastructure).ToArray();
@@ -139,7 +139,8 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
         return new Candidate(action, priority, age, gained);
     }
 
-    private static bool ProjectTrade(Player player, GameState state, StrategyAction action, HashSet<string> owned, out HashSet<string> after)
+    internal static bool ProjectTrade(Player player, GameState state, StrategyAction action, HashSet<string> owned,
+        out HashSet<string> after, Func<PropertyState, bool>? protectedProperty = null)
     {
         after = new HashSet<string>(owned, StringComparer.Ordinal);
         var trade = action.Trade;
@@ -149,48 +150,64 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
             trade.PropertyIdsReceived.Distinct().Count() != trade.PropertyIdsReceived.Length ||
             trade.PropertyIdsGiven.Intersect(trade.PropertyIdsReceived).Any()) return false;
         var other = state.OtherPlayers.FirstOrDefault(p => p.Id == trade.OtherPlayerId && p.Id != player.Id);
-        if (other is null || trade.PropertyIdsGiven.Any(id => !owned.Contains(id) || Find(state, id) is not { } p || IsInfrastructure(p)) ||
+        if (other is null || trade.PropertyIdsGiven.Any(id => !owned.Contains(id) || Find(state, id) is not { } p || (protectedProperty ?? IsInfrastructure)(p)) ||
             trade.PropertyIdsReceived.Any(id => owned.Contains(id) || !other.OwnedPropertyIds.Contains(id) || Find(state, id) is null)) return false;
         after.ExceptWith(trade.PropertyIdsGiven);
         after.UnionWith(trade.PropertyIdsReceived);
         return true;
     }
 
-    private static bool PreservesReserve(Player player, GameState state, decimal cost, HashSet<string> before, HashSet<string> after)
+    internal static bool PreservesReserve(Player player, GameState state, decimal cost, HashSet<string> before,
+        HashSet<string> after, Func<PropertyState, bool>? reserveTarget = null)
     {
         var cashAfter = player.CashBalance - cost;
         if (cashAfter < 0) return false;
-        var reserveAfter = Reserve(player, state, after);
+        var reserveAfter = Reserve(player, state, after, reserveTarget);
         if (cashAfter >= reserveAfter) return true;
         // If mandatory game costs already depleted the reserve, a cash-raising sale can still help restore it.
-        return cost <= 0 && Math.Max(0, reserveAfter - cashAfter) <= Math.Max(0, Reserve(player, state, before) - player.CashBalance);
+        return cost <= 0 && Math.Max(0, reserveAfter - cashAfter) <= Math.Max(0, Reserve(player, state, before, reserveTarget) - player.CashBalance);
     }
 
-    private static decimal Reserve(Player player, GameState state, HashSet<string> owned) => state.Properties
-        .Where(p => IsInfrastructure(p) && p.IsAvailable && !owned.Contains(p.PropertyId))
+    internal static decimal Reserve(Player player, GameState state, HashSet<string> owned, Func<PropertyState, bool>? reserveTarget = null) => state.Properties
+        .Where(p => (reserveTarget ?? IsInfrastructure)(p) && p.IsAvailable && !owned.Contains(p.PropertyId))
         .OrderBy(p => ForwardDistance(player.BoardPosition, p.BoardPosition, state.BoardSize))
         .Select(p => p.SalePrice).FirstOrDefault();
 
-    private static int ForwardDistance(int from, int to, int size)
+    internal static int ForwardDistance(int from, int to, int size)
     {
         var distance = (to - from + size) % size;
         return distance == 0 ? size : distance;
     }
 
-    private static bool CompletesNewGroup(GameState state, HashSet<string> before, HashSet<string> after) =>
+    internal static bool CompletesNewGroup(GameState state, HashSet<string> before, HashSet<string> after) =>
         ColorGroups(state).Any(g => !g.All(p => before.Contains(p.PropertyId)) && g.All(p => after.Contains(p.PropertyId)));
 
-    private static bool KeepsCompletedGroups(GameState state, HashSet<string> before, HashSet<string> after) =>
+    internal static bool KeepsCompletedGroups(GameState state, HashSet<string> before, HashSet<string> after) =>
         ColorGroups(state).Where(g => g.All(p => before.Contains(p.PropertyId))).All(g => g.All(p => after.Contains(p.PropertyId)));
 
-    private static int ColorProgress(GameState state, HashSet<string> owned) =>
+    internal static int ColorProgress(GameState state, HashSet<string> owned) =>
         ColorGroups(state).Sum(g => { var count = g.Count(p => owned.Contains(p.PropertyId)); return count * count; });
 
     private static IEnumerable<IGrouping<string?, PropertyState>> ColorGroups(GameState state) =>
         state.Properties.Where(p => p.ColorGroup is not null).GroupBy(p => p.ColorGroup);
 
-    private static bool IsInfrastructure(PropertyState property) => property.Type is PropertyType.Railroad or PropertyType.Utility;
-    private static PropertyState? Find(GameState state, string? id) => state.Properties.FirstOrDefault(p => p.PropertyId == id);
+    internal static bool IsInfrastructure(PropertyState property) => property.Type is PropertyType.Railroad or PropertyType.Utility;
+    internal static PropertyState? Find(GameState state, string? id) => state.Properties.FirstOrDefault(p => p.PropertyId == id);
+
+    internal static StrategyAction? SelectJailRelease(Player player, GameState state, Func<decimal, bool> allowsCost)
+    {
+        // Ahead of Jail means before the next GO crossing, not a property on the next circuit.
+        if (!state.Properties.Any(p => IsInfrastructure(p) && p.IsAvailable && !player.OwnedPropertyIds.Contains(p.PropertyId) &&
+            p.BoardPosition > player.BoardPosition)) return null;
+
+        return state.AvailableActions
+            .Where(a => a.Type == StrategyActionType.UseGetOutOfJailFreeCard && a.Cost == 0 ||
+                a.Type == StrategyActionType.PayJailFine && a.Cost > 0 && allowsCost(a.Cost))
+            .OrderBy(a => a.Type == StrategyActionType.UseGetOutOfJailFreeCard ? 0 : 1)
+            .ThenBy(a => a.Cost)
+            .ThenBy(a => a.Id, StringComparer.Ordinal)
+            .FirstOrDefault();
+    }
 
     private static void ValidateBoard(Player player, GameState state)
     {
