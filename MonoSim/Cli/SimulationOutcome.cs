@@ -1,5 +1,6 @@
 using System.Globalization;
 using MonoSim.Models;
+using MonoSim.Strategies;
 
 namespace MonoSim.Cli;
 
@@ -16,7 +17,7 @@ public sealed record SimulationOutcome(string RunId, string SimulationId, int Nu
     }.Concat(Enumerable.Range(1, 6).SelectMany(i => new[]
     {
         $"Player{i}Strategy", $"Player{i}Cash", $"Player{i}PortfolioValue", $"Player{i}Bankrupt", $"Player{i}Winner"
-    })).ToArray());
+    })).Concat(Enumerable.Range(1, 6).SelectMany(i => new[] { $"Player{i}Adherence", $"Player{i}EffectiveAdherence" })).ToArray());
 
     public string[] Fields()
     {
@@ -31,7 +32,7 @@ public sealed record SimulationOutcome(string RunId, string SimulationId, int Nu
         }
         var fields = new List<string>
         {
-            "1", RunId, SimulationId, Text(Number), status, Text(BatchSeed), Text(SimulationSeed), Definition.EditionId,
+            "2", RunId, SimulationId, Text(Number), status, Text(BatchSeed), Text(SimulationSeed), Definition.EditionId,
             Text(Definition.SchemaVersion), DefinitionPath, Text(InitialPlayers.Length), Text(MaximumRounds), Text(ShuffleDecks),
             Text(FinalState?.RoundNumber), Text(FinalState?.TurnNumber), FinalState?.EndReason?.ToString() ?? "",
             string.Join("|", FinalState?.WinnerIds ?? []), Error?.GetType().FullName ?? "", Error?.Message ?? "", LogPath
@@ -47,6 +48,16 @@ public sealed record SimulationOutcome(string RunId, string SimulationId, int Nu
             var final = FinalState?.Players.Single(p => p.Id == initial.Id);
             var portfolio = FinalState?.PortfolioValues.Single(p => p.PlayerId == initial.Id);
             fields.AddRange([initial.Strategy, Text(final?.CashBalance), Text(portfolio?.Total), Text(final?.IsBankrupt), Text(FinalState?.WinnerIds.Contains(initial.Id))]);
+        }
+        for (var i = 0; i < 6; i++)
+        {
+            if (i >= InitialPlayers.Length)
+            {
+                fields.AddRange(["", ""]);
+                continue;
+            }
+            var player = InitialPlayers[i];
+            fields.AddRange([Text(player.StrategyAdherence), Text(player.StrategyAdherence + AdherenceBonuses.For(player.Strategy))]);
         }
         return fields.ToArray();
     }

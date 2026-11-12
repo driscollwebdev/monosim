@@ -18,6 +18,7 @@ internal static class EngineTests
                     Expect<ArgumentException>(() => new MonoSimEngine(Enumerable.Range(0, count).Select(i => P($"p{i}", 0)).ToArray(), new Recorder()));
                 }
                 Expect<ArgumentException>(() => new MonoSimEngine([P("same", 0), P("same", 0)], new Recorder()));
+                Expect<ArgumentException>(() => new MonoSimEngine([P("a", 0) with { CompletedLaps = -1 }, P("b", 0)], new Recorder()));
                 Expect<ArgumentNullException>(() => new MonoSimEngine([P("a", 0), P("b", 0)], null!));
                 _ = new MonoSimEngine(Enumerable.Range(0, 6).Select(i => P($"p{i}", 0)).ToArray(), new Recorder());
             }),
@@ -63,7 +64,7 @@ internal static class EngineTests
                 var options = Opt([1, 1], [2, 2], [3, 3], [1, 3]) with { StrategyFactory = (_, executor) => new Script(executor) };
                 var e = new MonoSimEngine([P("a", 0), P("b", 0)], new Recorder(), options);
                 var final = e.Play();
-                Check(final.Players.Single(p => p.Id == "a") is { IsInJail: true, BoardPosition: 10 }, "The third doubles result was moved normally.");
+                Check(final.Players.Single(p => p.Id == "a") is { IsInJail: true, BoardPosition: 10, CompletedLaps: 1 }, "The jail transfer changed the lap count after the earlier Advance-to-GO card.");
             }),
             ("GO and an Advance-to-GO card award salary once per crossing", () =>
             {
@@ -72,6 +73,7 @@ internal static class EngineTests
                 var final = e.Play();
                 var player = final.Players.Single(p => p.Id == "a");
                 Check(player.CashBalance == 400 && player.FinancialLedger.Count(t => t.Description == "GO salary") == 2, "Duplicated or omitted GO salary.");
+                Check(player.CompletedLaps == 2, "Dice and card crossings must both advance the lap count.");
             }),
             ("Back-three Chance resolves the chained Community Chest draw", () =>
             {
@@ -456,7 +458,7 @@ internal static class EngineTests
     private static MonoSimEngineOptions Opt(params int[][] dice)
     {
         var queue = new Queue<int[]>(dice);
-        return new() { RandomSeed = 1234, ShuffleDecks = false, DiceRoller = () =>
+        return new() { EnableHumanDecisions = false, RandomSeed = 1234, ShuffleDecks = false, DiceRoller = () =>
         {
             if (queue.Count == 0)
             {

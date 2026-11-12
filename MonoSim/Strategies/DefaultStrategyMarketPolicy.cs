@@ -243,7 +243,8 @@ public sealed class DefaultStrategyMarketPolicy(bool capBidsAtValuation = false,
             {
                 multiple = pricing.MonopolyCompletionMultiple;
             }
-            var maximum = Math.Min(decimal.Floor(received * multiple - given), player.CashBalance - offer.BankFees);
+            var incoming = state.Properties.Where(p => offer.PropertyIdsReceived.Contains(p.PropertyId)).ToArray();
+            var maximum = Math.Min(decimal.Floor(received * multiple - given), player.CashBalance - offer.BankFees - Reserve(player, state, after, incoming));
             counter = BalanceCash(offer, maximum);
         }
         if (counter is not null && counter != offer && AcceptTrade(player, state, counter))
@@ -329,7 +330,20 @@ public sealed class DefaultStrategyMarketPolicy(bool capBidsAtValuation = false,
     private decimal Reserve(Player player, GameState state, HashSet<string> after, PropertyState[] incoming)
     {
         var kind = Kind(player);
-        if (kind is "aggressive" or "conservative" or "novice")
+        if (kind == "aggressive")
+        {
+            if (incoming.Length > 0 && incoming.All(p => p.IsAvailable && state.OtherPlayers.All(other => !other.OwnedPropertyIds.Contains(p.PropertyId))))
+            {
+                if (AggressivePurchaseAdvisor.CompletesAcquisition(player, state, incoming.Select(p => p.PropertyId)))
+                {
+                    return 0;
+                }
+                return Math.Max(incoming.Min(p => AggressivePurchaseAdvisor.PurchaseReserve(player, state, p)),
+                    AggressivePurchaseAdvisor.DevelopmentReserve(player, state));
+            }
+            return AggressivePurchaseAdvisor.AcquisitionReserve(player, state);
+        }
+        if (kind is "conservative" or "novice")
         {
             return 0;
         }

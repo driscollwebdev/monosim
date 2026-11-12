@@ -46,7 +46,7 @@ public sealed partial class MonoSimEngine
         {
             throw new InvalidOperationException("Offers cannot be submitted after actions have been declared complete.");
         }
-        if (strategies[playerId] is ITradeInitiationPolicy { InitiatesTrades: false } && trade.OriginalOfferId is null)
+        if (!options.EnableHumanDecisions && strategies[playerId] is ITradeInitiationPolicy { InitiatesTrades: false } && trade.OriginalOfferId is null)
         {
             throw new InvalidOperationException("This strategy participates in trades but does not initiate offers.");
         }
@@ -69,7 +69,8 @@ public sealed partial class MonoSimEngine
 
     private IEnumerable<StrategyAction> TradeActions(string id, GameState state)
     {
-        if (strategies[id] is ITradeInitiationPolicy { InitiatesTrades: false })
+        if (!options.EnableHumanDecisions && strategies[id] is ITradeInitiationPolicy { InitiatesTrades: false } ||
+            Owed(id) == 0 && rejectedTradePhases.Contains(TradePhase(id)))
         {
             return [];
         }
@@ -99,6 +100,15 @@ public sealed partial class MonoSimEngine
                     BankFees = received.Where(p => properties[p].IsMortgaged).Sum(p => properties[p].MortgageValue * state.MortgageInterestRate),
                     OtherPlayerBankFees = given.Where(p => properties[p].IsMortgaged).Sum(p => properties[p].MortgageValue * state.MortgageInterestRate)
                 };
+                if (options.EnableHumanDecisions)
+                {
+                    var planned = HumanTradeCandidate(id, otherId, state, terms, actionId);
+                    if (planned is not null)
+                    {
+                        candidates.Add(planned);
+                    }
+                    return;
+                }
                 var history = new List<PropertyTrade>();
                 if (market is IStrategyTradeNegotiator negotiator)
                 {
@@ -179,12 +189,16 @@ public sealed partial class MonoSimEngine
         }
     }
 
-    private void ExecuteTrade(string id, StrategyAction action, GameState state)
+    private StrategyAction? ExecuteTrade(string id, StrategyAction action, GameState state)
     {
         var validation = TradeValidator.ValidateAction(players[id], state, action);
         if (!validation.IsValid)
         {
             throw new InvalidOperationException(string.Join(" ", validation.Errors));
+        }
+        if (options.EnableHumanDecisions)
+        {
+            return ExecuteHumanTrade(id, action, state);
         }
         var trade = TradeValidator.TermsForAction(players[id], state, action)!;
         var other = trade.OtherPlayerId;
@@ -227,6 +241,13 @@ public sealed partial class MonoSimEngine
             trade = trade with { OriginalOfferId = root.Id };
         }
         submitted ??= SubmitTradeOffer(id, trade);
+        CommitTrade(id, trade, submitted);
+        return action;
+    }
+
+    private void CommitTrade(string id, PropertyTrade trade, TradeOffer submitted)
+    {
+        var other = trade.OtherPlayerId;
         var history = TradeValidator.RecordCompletedTrade(players[id], Snapshot(id, false), trade);
         // Validation has already checked both net balances and all current assets; commit the exchange atomically.
         var cash = trade.CashPaid - trade.CashReceived;

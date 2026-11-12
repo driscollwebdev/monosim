@@ -7,6 +7,7 @@ namespace MonoSim.Strategies;
 /// <summary>A rent-biased, reactive strategy that responds to trades but never proposes them.</summary>
 public sealed class NoviceStrategy : IPlayingStrategy, IStrategyMarketPolicy, ITradeInitiationPolicy
 {
+    public decimal AdherenceAdjustment => AdherenceBonuses.Novice;
     private readonly IStrategyActionExecutor executor;
     private readonly Random random;
     private readonly Dictionary<(string Player, long Turn, int Roll, string Property), bool> purchaseDecisions = [];

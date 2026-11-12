@@ -10,13 +10,17 @@ public sealed partial class MonoSimEngine
         var start = players[id].BoardPosition;
         var absolute = start + steps;
         var position = ((absolute % definition.Board.Length) + definition.Board.Length) % definition.Board.Length;
-        if (collectGo && steps > 0 && absolute >= definition.Board.Length)
+        if (steps > 0 && absolute >= definition.Board.Length)
         {
             var circuits = absolute / definition.Board.Length;
-            TransferCash(null, id, circuits * definition.Money("goSalary"), "GO salary");
+            players[id] = players[id] with { CompletedLaps = checked(players[id].CompletedLaps + circuits) };
+            if (collectGo)
+            {
+                TransferCash(null, id, circuits * definition.Money("goSalary"), "GO salary");
+            }
         }
         players[id] = players[id] with { BoardPosition = position };
-        Log("PlayerMoved", id, $"{start} -> {position} ({steps} spaces)");
+        Log("PlayerMoved", id, $"{start} -> {position} ({steps} spaces); completed laps {players[id].CompletedLaps}");
     }
 
     private void MoveTo(string id, int destination, bool collectGo)

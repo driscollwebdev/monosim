@@ -96,6 +96,11 @@ The fixed schema supports appending batches with different player counts:
   `ErrorMessage`, and `LogPath`.
 - For each of six player slots: `PlayerNStrategy`, `PlayerNCash`,
   `PlayerNPortfolioValue`, `PlayerNBankrupt`, and `PlayerNWinner`.
+- Twelve additional columns record `PlayerNAdherence` and
+  `PlayerNEffectiveAdherence` for each of the six player slots.
+
+The current results schema is version 2. Version 1 files have a different
+header and cannot be appended to; choose a new filename or overwrite them.
 
 Unused player slots are blank. Actual randomly selected strategies are recorded.
 Shared winners appear as pipe-separated IDs and each winning player's flag is
@@ -270,9 +275,12 @@ create fresh balances, ownership, mortgages, buildings, and deck order from
 
 `MonoSim.Models.Player` holds a player's string ID, name, strategy identifier,
 cash balance, total mortgage value, zero-based board position, owned property
-IDs, and financial ledger. Monetary fields use `decimal`. Identity, strategy,
+IDs, completed laps, and financial ledger. Monetary fields use `decimal`. Identity, strategy,
 and cash balance are required at construction; initialize cash from the game
 definition's `initialState.playerCash`. Property and ledger arrays start empty.
+`CompletedLaps` starts at zero and counts forward crossings of GO, including card
+movement, independently of whether salary is collected. Backward movement and
+jail transfers do not increment it. The count is preserved in player snapshots.
 
 `TotalMortgageValue` is the sum of the listed mortgage values of **all** owned
 properties, including ones currently mortgaged. It is not outstanding mortgage
@@ -336,8 +344,8 @@ Strategy methods select the action; the engine executes it to update game state.
 
 ## Aggressive strategy
 
-`AggressiveStrategy` spends current cash only. It does not mortgage owned
-properties to raise funds or keep an investment cash reserve. Its priorities are:
+`AggressiveStrategy` spends current cash only and does not mortgage owned
+properties to raise funds. On the first trip around the board, its priorities are:
 
 1. Buy the available property landed on when affordable, regardless of whether
    it completes a color group.
@@ -346,8 +354,36 @@ properties to raise funds or keep an investment cash reserve. Its priorities are
 3. Spend remaining cash on mortgage redemption and legal house/hotel upgrades,
    choosing the greatest immediate ordinary-rent increase per dollar first.
 
-Completing a color group does not raise purchase priority. Mortgage trades never
-displace an affordable landing purchase. The policy has no fixed turn-number
+Completing a color group does not raise first-lap purchase priority. On later laps,
+the player considers affordable unowned properties reachable from the current
+position by the next direct dice roll. It favors opportunities in groups where
+it already holds more properties, including railroad and utility sets. Among
+equally useful opportunities, it reserves the cheapest purchase price. Card
+movement and future GO salary are not assumed. Opportunities are recomputed after
+each action, so purchases by other players or changed cash do not leave stale
+reservations.
+
+An affordable landing purchase is passed when it would prevent buying a stronger
+reachable opportunity. For example, after landing on Connecticut with $200 and
+owning States Avenue, the player keeps $140 for available St. Charles Place or
+Virginia Avenue rather than spending $120 on Connecticut. At $260 it buys
+Connecticut and retains $140. If the alternatives are unavailable, unreachable,
+or unaffordable even before the purchase, they do not block it. An actual bank
+landing that completes a monopoly can use the reserved cash; mortgage purchases
+and trades must still protect their reserve even when they would complete a group.
+
+Mortgage purchases, cash-spending trades, and auctions of owned titles preserve
+cash for strengthening any existing group. Auctions of bank-owned properties use
+the same opportunity comparison as landing purchases, so acquiring the desired
+property itself can use the reserved cash. Building upgrades and mortgage redemptions
+preserve it only when a reachable unowned property would complete a monopoly.
+Partial-group opportunities therefore do not prevent developing existing income.
+These conditional reserves apply after the first GO crossing; there is no fixed
+minimum cash balance. Debt settlement and the established jail-release policy
+retain priority.
+
+Mortgage trades follow affordable landing purchases that pass these checks.
+The policy has no fixed turn-number
 cutoff for trading: it considers a trade when the engine offers one and cash
 remains after any landing purchase. Equal investment returns use lower cost,
 then ordinal option ID, for deterministic decisions. Money left over because
@@ -934,12 +970,14 @@ minimum, and all multiples must be at least one. API callers can also supply the
 options directly to `DefaultStrategyMarketPolicy`.
 
 `IStrategyTradeNegotiator` plans opening offers and counteroffers. Candidate
-negotiations allow a seller counter and one buyer response. The engine offers
-only terms accepted by both sides as executable actions, retaining their opening
-and counter terms in `StrategyAction.NegotiationHistory`. Execution revalidates and
-publishes the property-continuous offer chain before atomically settling the agreed
-terms. Declined proposals and counter decisions are logged once per distinct
-candidate per roll; these planning events are distinct from `TradeCompleted`.
+negotiations allow a seller counter and one buyer response. Planning identifies
+preferred offers without sampling adherence. During execution, recipients can
+accept, decline, or counter, applying their adherence at each actual decision.
+Execution revalidates and publishes the property-continuous offer chain before
+atomically settling agreed terms. A rejected proposal returns
+`StrategyTurnState.ActionExecuted = false`; a completed negotiation returns its
+actual terms in `ExecutedAction`, including any changed price. Actual opening
+and counter terms are retained in `StrategyAction.NegotiationHistory`.
 
 Novice purchase, mutual-monopoly probability, development, jail, and no-initiation
 policies are unchanged. It does not inherit the new general consolidation,
@@ -1018,6 +1056,57 @@ from the simulation seed, keeping runs reproducible without consuming dice or
 deck randomness. Direct callers can supply a `Random` instance to the constructor.
 `IStrategyMarketPolicy` carries these trade and auction decisions, while
 `ITradeInitiationPolicy` suppresses novice-originated trade offers.
+
+## Strategy adherence
+
+The strategy descriptions above define expected behavior. Human decisions are
+enabled by default: a player can occasionally make the opposite high-level
+choice, including overriding cash reserves, target-property protection, and
+rent-risk avoidance. Ownership, affordability, legal building, trade constraints,
+and other game rules remain mandatory.
+
+At the start of each batch, each player slot receives a `StrategyAdherence`
+between 0.75 and 0.95, inclusive. That base value stays with the same player ID
+across all simulations in the batch, independently of randomized turn order or
+strategy selection. The effective probability adds the chosen strategy's fixed
+`AdherenceAdjustment`:
+
+| Strategy | Adjustment |
+| --- | ---: |
+| Aggressive | +0.02 |
+| Conservative | +0.02 |
+| Infrastructure | +0.01 |
+| Adjacent Group | -0.02 |
+| Blue-Green | -0.02 |
+| Novice | -0.04 |
+
+Each actual optional decision samples a value from zero to one. A sample less
+than or equal to the effective probability follows the strategy; a larger
+sample reverses the binary choice. Decisions include buying or passing,
+improving or waiting, redeeming a mortgage, leaving jail voluntarily, proposing
+a trade, accepting or countering an offer, and bidding or passing at auction.
+After that choice, the strategy's normal selection determines the action's
+details. If a deviation selects an action the strategy would never choose, the
+engine selects a legal affordable alternative. Novice's existing purchase and
+trade probabilities still determine its expected choices before adherence.
+
+Required debt settlement, card effects, and forced actions do not sample
+adherence. Neither does a decision with only one legal outcome. Passing counts
+as an alternative to taking an optional action. Enumerating hypothetical trade
+offers does not consume adherence samples. A failed voluntary trade ends further
+proposals by that actor for the current phase, while allowing other actions.
+
+Independent per-player random streams keep seeded batches reproducible under
+parallel execution. `StrategyDecision` log events record expected and actual
+choices, the sample, base probability, adjustment, and effective probability.
+Result rows record both probabilities for each player, including failed games.
+
+API-created players default to a base of 0.85; callers can supply any value in
+the supported range. Custom strategies can expose `AdherenceAdjustment` (default
+zero) and use `StrategyDecisions.Choose` with an `IPlayerDecisionContext` executor
+to participate in optional-action decisions. Engine options
+`EnableHumanDecisions = false` and `AdherenceSampler` support deterministic
+strategy verification and controlled tests. The CLI enables human decisions.
 
 ## References
 

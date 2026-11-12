@@ -9,6 +9,7 @@ namespace MonoSim.Strategies;
 /// </summary>
 public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPlayingStrategy, IStrategyGroupFocus
 {
+    public decimal AdherenceAdjustment => AdherenceBonuses.Conservative;
     private readonly IStrategyActionExecutor executor = executor
         ?? throw new ArgumentNullException(nameof(executor));
     private readonly Dictionary<string, DecisionMemory> memory = [];
@@ -40,13 +41,12 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
 
         // OwnedPropertyIds retain acquisition order, so an existing player's first group is stable.
         plan = plan with { TargetGroup = plan.TargetGroup ?? FirstOwnedGroup(player, state) };
-        var first = SelectAction(player, state, plan);
 
         return () =>
         {
             var currentPlayer = player;
             var currentState = state;
-            var next = first;
+            var next = StrategyDecisions.Choose(executor, currentPlayer, currentState, s => SelectAction(currentPlayer, s, plan));
             memory[player.Id] = plan;
             while (next is not null)
             {
@@ -55,6 +55,14 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
                     throw new InvalidOperationException("The trade is no longer valid for the current state.");
                 }
                 var updated = executor.Execute(currentPlayer.Id, next);
+                if (!updated.ActionExecuted)
+                {
+                    currentPlayer = updated.Player;
+                    currentState = updated.GameState;
+                    next = StrategyDecisions.Choose(executor, currentPlayer, currentState, s => SelectAction(currentPlayer, s, plan));
+                    continue;
+                }
+                next = updated.ExecutedAction ?? next;
                 if (updated.Player.Id != player.Id || updated.Player.CashBalance != currentPlayer.CashBalance - next.Cost ||
                     updated.GameState.TurnNumber != state.TurnNumber)
                 {
@@ -78,6 +86,10 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
                 {
                     plan = plan with { TargetGroup = FindProperty(currentState, next.PropertyId)?.ColorGroup };
                 }
+                if (plan.TargetGroup is null)
+                {
+                    plan = plan with { TargetGroup = FirstOwnedGroup(updated.Player, updated.GameState) };
+                }
 
                 if (next.Type is StrategyActionType.BuildHouse or StrategyActionType.BuildHotel)
                 {
@@ -87,7 +99,7 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
                 memory[player.Id] = plan;
                 currentPlayer = updated.Player;
                 currentState = updated.GameState;
-                next = SelectAction(currentPlayer, currentState, plan);
+                next = StrategyDecisions.Choose(executor, currentPlayer, currentState, s => SelectAction(currentPlayer, s, plan));
             }
             if (executor is IPlayerTurnController controller)
             {

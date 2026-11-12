@@ -10,6 +10,9 @@ public sealed record Player
     /// <summary>Identifies the strategy used to make this player's decisions.</summary>
     public required string Strategy { get; init; }
 
+    /// <summary>Base likelihood of following the strategy, before its fixed adjustment.</summary>
+    public decimal StrategyAdherence { get; init; } = 0.85m;
+
     public required decimal CashBalance { get; init; }
 
     /// <summary>
@@ -20,6 +23,9 @@ public sealed record Player
 
     /// <summary>Zero-based position in the game definition's board.</summary>
     public int BoardPosition { get; init; }
+
+    /// <summary>Forward crossings of GO, including forward card movement; jail transfers and backward movement do not count.</summary>
+    public long CompletedLaps { get; init; }
 
     /// <summary>Whether the player is imprisoned, rather than just visiting Jail.</summary>
     public bool IsInJail { get; init; }

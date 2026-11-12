@@ -19,9 +19,16 @@ public sealed partial class MonoSimEngine
             throw new InvalidOperationException("No actions may follow a completion declaration.");
         }
         var state = Snapshot(playerId, false);
+        var executed = action;
         if (TradeValidator.IsTradeAction(action))
         {
-            ExecuteTrade(playerId, action, state);
+            var trade = ExecuteTrade(playerId, action, state);
+            if (trade is null)
+            {
+                decisionRevision++;
+                return new(CopyPlayer(players[playerId]), Snapshot(playerId)) { ActionExecuted = false };
+            }
+            executed = trade;
         }
         else if (action.Type == StrategyActionType.AuctionAssets)
         {
@@ -79,7 +86,8 @@ public sealed partial class MonoSimEngine
             }
         }
         Log("ActionExecuted", playerId, $"{action.Type}: {action.Id}");
-        return new(CopyPlayer(players[playerId]), Snapshot(playerId));
+        decisionRevision++;
+        return new(CopyPlayer(players[playerId]), Snapshot(playerId)) { ExecutedAction = executed };
     }
 
     private void GiveProperty(string? from, string? to, string id)

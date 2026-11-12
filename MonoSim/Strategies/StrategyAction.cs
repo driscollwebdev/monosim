@@ -7,6 +7,7 @@ public sealed record StrategyAction
     public required string Id { get; init; }
 
     public required StrategyActionType Type { get; init; }
+    public bool IsStrategyPreferred { get; init; } = true;
 
     public string? PropertyId { get; init; }
 

@@ -6,6 +6,7 @@ namespace MonoSim.Strategies;
 /// <summary>The fixed green/dark-blue variant of Adjacent Group Strategy.</summary>
 public sealed class BlueGreenStrategy : IPlayingStrategy, IStrategyGroupFocus
 {
+    public decimal AdherenceAdjustment => AdherenceBonuses.BlueGreen;
     private readonly AdjacentGroupStrategy strategy;
 
     public BlueGreenStrategy(IStrategyActionExecutor executor)

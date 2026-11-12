@@ -275,6 +275,7 @@ internal static class NoviceStrategyTests
                     ];
                     var options = new MonoSimEngineOptions
                     {
+                        EnableHumanDecisions = false,
                         RandomSeed = 1, MaximumRounds = 1, DiceRoller = () => [1, 2],
                         StrategyFactory = (p, executor) => p.Id == "a" ? new SwapScript(executor) : new NoviceStrategy(executor, new FixedRandom(0))
                     };

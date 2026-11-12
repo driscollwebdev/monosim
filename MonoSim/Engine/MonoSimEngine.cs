@@ -7,7 +7,7 @@ using System.Text.Json;
 namespace MonoSim;
 
 /// <summary>Runs one isolated simulation; strategies and log output are supplied separately.</summary>
-public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurnController
+public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurnController, IPlayerDecisionContext
 {
     private readonly ILogger logger;
     private readonly MonoSimEngineOptions options;
@@ -56,15 +56,16 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
             throw new ArgumentException("SimulationId cannot be empty.", nameof(options));
         }
         if (players.Length is < 2 or > 6 || players.Any(p => p is null || string.IsNullOrWhiteSpace(p.Id) || string.IsNullOrWhiteSpace(p.Name) || p.CashBalance < 0 || p.IsBankrupt) ||
-            players.Select(p => p.Id).Distinct(StringComparer.Ordinal).Count() != players.Length)
+            players.Select(p => p.Id).Distinct(StringComparer.Ordinal).Count() != players.Length || players.Any(p => p.StrategyAdherence is < 0.75m or > 0.95m))
         {
-            throw new ArgumentException("Provide two through six non-bankrupt players with unique nonempty IDs, names, and nonnegative cash.", nameof(players));
+            throw new ArgumentException("Provide two through six non-bankrupt players with unique nonempty IDs, names, nonnegative cash, and strategy adherence between 0.75 and 0.95.", nameof(players));
         }
         if (options.MaximumRounds is <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "MaximumRounds must be positive when supplied.");
         }
         randomSeed = options.RandomSeed ?? Random.Shared.Next();
+        adherence = new(randomSeed, options.AdherenceSampler, choice => Log("StrategyDecision", choice.PlayerId, JsonSerializer.Serialize(choice)));
         random = new Random(randomSeed);
         definition = new GameDefinition(options.DefinitionPath);
         market = options.MarketPolicy ?? new DefaultStrategyMarketPolicy(capBidsAtValuation: false, (player, state) =>
@@ -91,11 +92,11 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
         var owned = new HashSet<string>(StringComparer.Ordinal);
         foreach (var player in players)
         {
-            if (player.BoardPosition < 0 || player.BoardPosition >= definition.Board.Length ||
+            if (player.BoardPosition < 0 || player.BoardPosition >= definition.Board.Length || player.CompletedLaps < 0 ||
                 player.OwnedPropertyIds.Any(id => !properties.ContainsKey(id) || !owned.Add(id)) ||
                 player.HeldGetOutOfJailFreeCardIds.Any(id => !definition.Cards.ContainsKey(id) || !id.EndsWith("jail-free", StringComparison.Ordinal) || !held.Add(id)))
             {
-                throw new ArgumentException("Player positions, properties, and held cards must be valid and exclusively owned.", nameof(players));
+                throw new ArgumentException("Player positions and lap counts must be valid; properties and held cards must be valid and exclusively owned.", nameof(players));
             }
             this.players.Add(player.Id, CopyPlayer(player));
             foreach (var id in player.OwnedPropertyIds)
@@ -144,7 +145,7 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
         Log("GameStarted", null, $"Simulation started with {order.Length} players; random seed {randomSeed}; definition {options.DefinitionPath}.");
         foreach (var id in order)
         {
-            Log("PlayerInitialized", id, $"{players[id].Name}; strategy {players[id].Strategy}; starting cash {players[id].CashBalance}.");
+            Log("PlayerInitialized", id, $"{players[id].Name}; strategy {players[id].Strategy}; starting cash {players[id].CashBalance}; adherence {players[id].StrategyAdherence}; adjustment {strategies[id].AdherenceAdjustment}.");
         }
         try
         {
@@ -222,6 +223,8 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
         rollNumber = 0;
         phase = TurnPhase.PreRoll;
         completedTrades.Clear();
+        adherence.BeginTurn();
+        rejectedTradePhases.Clear();
         loggedNegotiations.Clear();
         if (offers.Count > 0)
         {

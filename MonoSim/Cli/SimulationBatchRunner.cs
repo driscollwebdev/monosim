@@ -14,6 +14,7 @@ public sealed class SimulationBatchRunner(Func<Player[], ILogger, MonoSimEngineO
         SimulationLogging logging, CancellationToken cancellationToken = default)
     {
         var seed = options.Seed ?? Random.Shared.Next();
+        var adherenceProfile = CreateAdherenceProfile(options.PlayerCount, seed);
         var completed = 0;
         var failed = 0;
         var stopRequested = 0;
@@ -37,7 +38,7 @@ public sealed class SimulationBatchRunner(Func<Player[], ILogger, MonoSimEngineO
                 cancellationToken.ThrowIfCancellationRequested();
                 var gameSeed = unchecked(seed + index * 7919);
                 var id = Guid.NewGuid().ToString("N");
-                var players = CreatePlayers(options, definition, gameSeed);
+                var players = CreatePlayers(options, definition, gameSeed, adherenceProfile);
                 var turnOrder = players.ToArray();
                 var turnRandom = new Random(unchecked(gameSeed ^ 0x5455524E));
                 turnRandom.Shuffle(turnOrder);
@@ -98,8 +99,19 @@ public sealed class SimulationBatchRunner(Func<Player[], ILogger, MonoSimEngineO
         return new(options.Simulations, completed, failed, seed, workers);
     }
 
-    public static Player[] CreatePlayers(CliOptions options, SimulationDefinition definition, int simulationSeed)
+    public static decimal[] CreateAdherenceProfile(int playerCount, int batchSeed)
     {
+        var random = new Random(unchecked(batchSeed ^ 0x50524F46));
+        return Enumerable.Range(0, playerCount).Select(_ => random.Next(750000, 950001) / 1000000m).ToArray();
+    }
+
+    public static Player[] CreatePlayers(CliOptions options, SimulationDefinition definition, int simulationSeed, IReadOnlyList<decimal>? adherenceProfile = null)
+    {
+        adherenceProfile ??= CreateAdherenceProfile(options.PlayerCount, simulationSeed);
+        if (adherenceProfile.Count != options.PlayerCount || adherenceProfile.Any(p => p is < 0.75m or > 0.95m))
+        {
+            throw new ArgumentException("An adherence profile must contain one value from 0.75 through 0.95 for each player.", nameof(adherenceProfile));
+        }
         var random = new Random(unchecked(simulationSeed ^ 0x53545241));
         var players = new Player[options.PlayerCount];
         for (var i = 0; i < players.Length; i++)
@@ -112,6 +124,7 @@ public sealed class SimulationBatchRunner(Func<Player[], ILogger, MonoSimEngineO
             players[i] = new()
             {
                 Id = $"player-{i + 1}", Name = $"Player {i + 1}", Strategy = strategy,
+                StrategyAdherence = adherenceProfile[i],
                 CashBalance = definition.StartingCash, BoardPosition = definition.StartingPosition, IsInJail = definition.StartsInJail
             };
         }

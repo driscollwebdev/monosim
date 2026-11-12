@@ -15,6 +15,7 @@ public sealed partial class MonoSimEngine
             throw new InvalidOperationException("An auction requires exclusively owned assets, with buildings already sold back to the bank.");
         }
         Log("AuctionStarted", seller, System.Text.Json.JsonSerializer.Serialize(bundle));
+        var auctionId = ++auctionSequence;
         var valuation = bundle.PropertyIds.Sum(p => TradeValidator.PropertyValue(properties[p], definition.Money("buildingResaleFraction"))) + bundle.CardIds.Length * 50;
         var fees = bundle.PropertyIds.Where(p => properties[p].IsMortgaged).Sum(p => properties[p].MortgageValue * definition.Money("mortgageInterestRate"));
         var liquidValue = AuctionRules.LiquidValue(bundle, Snapshot(null, false));
@@ -60,6 +61,15 @@ public sealed partial class MonoSimEngine
                     offered = Math.Min(ceilings[bidder], auction.MinimumBid);
                 }
                 var budget = Math.Max(0, players[bidder].CashBalance - Owed(bidder) - fees);
+                var expectedBid = offered is not null && Math.Min(offered.Value, budget) >= auction.MinimumBid;
+                if (!Decide(bidder, $"auction:{auctionId}:{auction.CurrentOffer}:{winner}", expectedBid, budget >= auction.MinimumBid))
+                {
+                    offered = null;
+                }
+                else if (!expectedBid)
+                {
+                    offered = auction.MinimumBid;
+                }
                 var bid = Math.Min(offered ?? 0, budget);
                 if (offered is null || bid < auction.MinimumBid)
                 {

@@ -3,9 +3,10 @@ using MonoSim.Trading;
 
 namespace MonoSim.Strategies;
 
-/// <summary>Acquires properties and develops income without keeping a cash reserve.</summary>
+/// <summary>Acquires properties aggressively, protecting later-lap consolidation opportunities when cash is limited.</summary>
 public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlayingStrategy
 {
+    public decimal AdherenceAdjustment => AdherenceBonuses.Aggressive;
     private readonly IStrategyActionExecutor executor = executor
         ?? throw new ArgumentNullException(nameof(executor));
 
@@ -19,12 +20,11 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
         ArgumentNullException.ThrowIfNull(gameState);
 
         // Selecting an action has no side effects. The engine invokes the returned delegate.
-        var first = SelectAction(player, gameState, preRoll);
         return () =>
         {
             var currentPlayer = player;
             var currentState = gameState;
-            var next = first;
+            var next = StrategyDecisions.Choose(executor, currentPlayer, currentState, s => SelectAction(currentPlayer, s, preRoll));
             while (next is not null)
             {
                 if (TradeValidator.IsTradeAction(next) && !TradeValidator.ValidateAction(currentPlayer, currentState, next).IsValid)
@@ -32,6 +32,14 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
                     throw new InvalidOperationException("The trade is no longer valid for the current state.");
                 }
                 var updated = executor.Execute(currentPlayer.Id, next);
+                if (!updated.ActionExecuted)
+                {
+                    currentPlayer = updated.Player;
+                    currentState = updated.GameState;
+                    next = StrategyDecisions.Choose(executor, currentPlayer, currentState, s => SelectAction(currentPlayer, s, preRoll));
+                    continue;
+                }
+                next = updated.ExecutedAction ?? next;
                 if (updated.Player.Id != currentPlayer.Id ||
                     updated.Player.CashBalance != currentPlayer.CashBalance - next.Cost)
                 {
@@ -50,7 +58,7 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
 
                 currentPlayer = updated.Player;
                 currentState = updated.GameState;
-                next = SelectAction(currentPlayer, updated.GameState, preRoll);
+                next = StrategyDecisions.Choose(executor, currentPlayer, currentState, s => SelectAction(currentPlayer, s, preRoll));
             }
             if (executor is IPlayerTurnController controller)
             {
@@ -89,12 +97,44 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
                 (a.Cost > 0 || a.Type == StrategyActionType.TradeProperties) &&
                 (!TradeValidator.IsTradeAction(a) || TradeValidator.ValidateAction(player, state, a).IsValid) &&
                 TradeSafetyAdvisor.ShouldConsiderAction(player, state, a) &&
+                PreservesPurchaseOpportunity(player, state, a) &&
                 (a.Type != StrategyActionType.TradeProperties || HelpfulTrade(player, state, a.Trade!)))
             .OrderBy(Priority)
             .ThenByDescending(a => IsPurchase(a.Type) ? 0 : a.RentIncrease / a.Cost)
             .ThenBy(a => a.Cost)
             .ThenBy(a => a.Id, StringComparer.Ordinal)
             .FirstOrDefault();
+    }
+
+    private static bool PreservesPurchaseOpportunity(Player player, GameState state, StrategyAction action)
+    {
+        if (player.CompletedLaps == 0 || action.Cost <= 0)
+        {
+            return true;
+        }
+        decimal reserve;
+        if (action.Type == StrategyActionType.BuyProperty)
+        {
+            var property = state.Properties.FirstOrDefault(p => p.PropertyId == action.PropertyId);
+            if (property is null)
+            {
+                return true;
+            }
+            reserve = AggressivePurchaseAdvisor.PurchaseReserve(player, state, property);
+            if (!AggressivePurchaseAdvisor.CompletesAcquisition(player, state, [property.PropertyId]))
+            {
+                reserve = Math.Max(reserve, AggressivePurchaseAdvisor.DevelopmentReserve(player, state));
+            }
+        }
+        else if (action.Type is StrategyActionType.BuyMortgagedProperty or StrategyActionType.TradeProperties)
+        {
+            reserve = AggressivePurchaseAdvisor.AcquisitionReserve(player, state);
+        }
+        else
+        {
+            reserve = AggressivePurchaseAdvisor.DevelopmentReserve(player, state);
+        }
+        return player.CashBalance - action.Cost >= reserve;
     }
 
     private static bool HelpfulTrade(Player player, GameState state, PropertyTrade trade)

@@ -200,7 +200,7 @@ internal static class AuctionTests
         var log = new Recorder();
         var options = new MonoSimEngineOptions
         {
-            RandomSeed = 42, MaximumRounds = 1, DiceRoller = () => [1, 3], ShuffleDecks = false, MarketPolicy = market,
+            EnableHumanDecisions = false, RandomSeed = 42, MaximumRounds = 1, DiceRoller = () => [1, 3], ShuffleDecks = false, MarketPolicy = market,
             StrategyFactory = (player, executor) => new AuctionScript(executor, player.Id == "s", bundle, mortgage)
         };
         return (new MonoSimEngine(players, log, options).Play(), log);

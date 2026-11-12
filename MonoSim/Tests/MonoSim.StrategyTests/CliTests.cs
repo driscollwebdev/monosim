@@ -236,6 +236,20 @@ internal static class CliTests
                 var a = Comparable(first);
                 var b = Comparable(second);
                 Check(a.Zip(b).All(pair => pair.First.SequenceEqual(pair.Second)) && a.Length == 4 && b.Length == 4);
+                  var rows = first.Rows().Skip(1).ToArray();
+                  for (var slot = 0; slot < 2; slot++)
+                  {
+                      var column = 50 + slot * 2;
+                      Check(rows.Select(row => row[column]).Distinct().Count() == 1);
+                      foreach (var row in rows)
+                      {
+                          var baseProbability = decimal.Parse(row[column], System.Globalization.CultureInfo.InvariantCulture);
+                          var effective = decimal.Parse(row[column + 1], System.Globalization.CultureInfo.InvariantCulture);
+                          Check(baseProbability is >= 0.75m and <= 0.95m);
+                          Check(effective == baseProbability + MonoSim.Strategies.AdherenceBonuses.For(row[20 + slot * 5]));
+                          Check(row[0] == "2" && row.Skip(54).All(string.IsNullOrEmpty));
+                      }
+                  }
                 foreach (var row in first.Rows().Skip(1))
                 {
                     Check(File.Exists(row[19]) && Path.GetDirectoryName(row[19])!.EndsWith("monosim-" + row[2]));
@@ -281,7 +295,7 @@ internal static class CliTests
             {
                 var fields = Outcome().Fields();
                 Check(fields.Length == SimulationOutcome.Headers.Count && fields[16] == "player-1|player-2");
-                Check(fields[24] == "True" && fields[29] == "True" && fields.Skip(30).All(string.IsNullOrEmpty));
+                Check(fields[24] == "True" && fields[29] == "True" && fields.Skip(30).Take(20).All(string.IsNullOrEmpty));
             }),
             ("Engine honors caller correlation IDs and cancellation", () =>
             {

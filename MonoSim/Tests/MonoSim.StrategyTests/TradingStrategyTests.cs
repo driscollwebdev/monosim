@@ -178,7 +178,7 @@ internal static class TradingStrategyTests
                     new() { Id = "a", Name = "A", Strategy = "aggressive", CashBalance = 2000, BoardPosition = 10, OwnedPropertyIds = ["mediterranean-avenue"] },
                     new() { Id = "b", Name = "B", Strategy = "conservative", CashBalance = 20, BoardPosition = 5, OwnedPropertyIds = ["oriental-avenue", "baltic-avenue"] }
                 ];
-                var final = new MonoSimEngine(players, log, new() { RandomSeed = 1, MaximumRounds = 1, DiceRoller = () => [1, 3] }).Play();
+                var final = new MonoSimEngine(players, log, new() { EnableHumanDecisions = false, RandomSeed = 1, MaximumRounds = 1, DiceRoller = () => [1, 3] }).Play();
                 var buyer = final.Players.Single(p => p.Id == "a");
                 Check(buyer.OwnedPropertyIds.Contains("baltic-avenue") && buyer.FinancialLedger.Any(t => t.Description == "Trade cash settlement" && t.Amount == -90));
                 Check(log.Events.Count(e => e.Event == "CounterOfferMade") == 2 && log.Events.Any(e => e.Event == "TradeCounterDeclined"));

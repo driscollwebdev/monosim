@@ -6,6 +6,7 @@ namespace MonoSim.Strategies;
 /// <summary>Collects infrastructure first, protecting cash for the next available infrastructure space.</summary>
 public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : IPlayingStrategy
 {
+    public decimal AdherenceAdjustment => AdherenceBonuses.Infrastructure;
     private readonly IStrategyActionExecutor executor = executor
         ?? throw new ArgumentNullException(nameof(executor));
 
@@ -25,12 +26,11 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
         Action<StrategyAction, GameState, StrategyTurnState>? afterExecute = null)
     {
         ValidateBoard(player, state);
-        var first = select(player, state);
         return () =>
         {
             var currentPlayer = player;
             var currentState = state;
-            var next = first;
+            var next = StrategyDecisions.Choose(executor, currentPlayer, currentState, s => select(currentPlayer, s));
             while (next is not null)
             {
                 if (TradeValidator.IsTradeAction(next) && !TradeValidator.ValidateAction(currentPlayer, currentState, next).IsValid)
@@ -38,6 +38,14 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
                     throw new InvalidOperationException("The trade is no longer valid for the current state.");
                 }
                 var updated = executor.Execute(currentPlayer.Id, next);
+                if (!updated.ActionExecuted)
+                {
+                    currentPlayer = updated.Player;
+                    currentState = updated.GameState;
+                    next = StrategyDecisions.Choose(executor, currentPlayer, currentState, s => select(currentPlayer, s));
+                    continue;
+                }
+                next = updated.ExecutedAction ?? next;
                 if (updated.Player.Id != player.Id || updated.Player.CashBalance != currentPlayer.CashBalance - next.Cost ||
                     updated.GameState.TurnNumber != state.TurnNumber)
                 {
@@ -72,7 +80,7 @@ public sealed class InfrastructureStrategy(IStrategyActionExecutor executor) : I
                 afterExecute?.Invoke(next, currentState, updated);
                 currentPlayer = updated.Player;
                 currentState = updated.GameState;
-                next = select(currentPlayer, currentState);
+                next = StrategyDecisions.Choose(executor, currentPlayer, currentState, s => select(currentPlayer, s));
             }
             if (executor is IPlayerTurnController controller)
             {

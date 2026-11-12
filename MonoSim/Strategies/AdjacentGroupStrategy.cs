@@ -10,6 +10,7 @@ namespace MonoSim.Strategies;
 /// </summary>
 public sealed class AdjacentGroupStrategy : IPlayingStrategy, IStrategyGroupFocus
 {
+    public decimal AdherenceAdjustment => AdherenceBonuses.AdjacentGroup;
     private readonly IStrategyActionExecutor executor;
     private readonly string? fixedFirstGroup;
     private readonly Func<Player, GameState, decimal, HashSet<string>, HashSet<string>, bool>? reservePolicy;
@@ -63,9 +64,10 @@ public sealed class AdjacentGroupStrategy : IPlayingStrategy, IStrategyGroupFocu
             (p, s) => SelectAction(p, s, pair, preRoll, reservePolicy),
             (executed, previous, updated) =>
             {
-                if (pair is null && executed.Type == StrategyActionType.BuyProperty && Find(previous, executed.PropertyId)?.ColorGroup is { } group)
+                var group = updated.Player.OwnedPropertyIds.Select(id => Find(updated.GameState, id)?.ColorGroup).FirstOrDefault(g => g is not null);
+                if (pair is null && group is not null)
                 {
-                    pair = PairFor(previous, group);
+                    pair = PairFor(updated.GameState, group);
                     if (pair is not null)
                     {
                         targets[player.Id] = pair;
