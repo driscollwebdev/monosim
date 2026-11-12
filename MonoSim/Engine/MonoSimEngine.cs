@@ -14,7 +14,7 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
     private readonly GameDefinition definition;
     private readonly Random random;
     private readonly int randomSeed;
-    private readonly string simulationId = Guid.NewGuid().ToString("N");
+    private readonly string simulationId;
     private readonly IStrategyMarketPolicy market;
     private readonly string[] order;
     private readonly Dictionary<string, Player> players = new(StringComparer.Ordinal);
@@ -50,6 +50,11 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
         ArgumentNullException.ThrowIfNull(players);
         this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
         this.options = options ?? throw new ArgumentNullException(nameof(options));
+        simulationId = options.SimulationId ?? Guid.NewGuid().ToString("N");
+        if (string.IsNullOrWhiteSpace(simulationId))
+        {
+            throw new ArgumentException("SimulationId cannot be empty.", nameof(options));
+        }
         if (players.Length is < 2 or > 6 || players.Any(p => p is null || string.IsNullOrWhiteSpace(p.Id) || string.IsNullOrWhiteSpace(p.Name) || p.CashBalance < 0 || p.IsBankrupt) ||
             players.Select(p => p.Id).Distinct(StringComparer.Ordinal).Count() != players.Length)
         {
@@ -145,6 +150,7 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
         {
             while (ActiveCount > 1)
             {
+                options.CancellationToken.ThrowIfCancellationRequested();
                 if (options.MaximumRounds is { } maximum && round >= maximum)
                 {
                     return CompleteGame(GameEndReason.RoundLimit);
@@ -153,6 +159,7 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
                 Log("RoundStarted", null, $"Round {round} begins in original player order, skipping finalized bankrupt players.");
                 foreach (var id in order)
                 {
+                    options.CancellationToken.ThrowIfCancellationRequested();
                     if (ActiveCount <= 1)
                     {
                         break;
@@ -226,6 +233,7 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
         var doubles = 0;
         while (!players[id].IsBankrupt && ActiveCount > 1)
         {
+            options.CancellationToken.ThrowIfCancellationRequested();
             phase = TurnPhase.RollAndMovement;
             rollNumber++;
             landingProperty = null;

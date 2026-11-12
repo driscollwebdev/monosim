@@ -3,3 +3,5 @@
 .vs/
 *.user
 *.suo
+logs/
+/results.csv

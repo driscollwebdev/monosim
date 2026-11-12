@@ -12,16 +12,190 @@ taxes or card payments; current editions have rewritten Community Chest cards.
 The edition ID identifies these choices rather than claiming all editions agree.
 
 ```powershell
-dotnet run
+dotnet run -- 4 aggressive,conservative,random --simulations 100 --seed 42
+dotnet run -- --help
 pwsh -NoProfile -File scripts/Test-GameData.ps1
 dotnet build
 ```
 
-The default console entry point loads the definition and prints its inventory.
-`MonoSimEngine` runs simulations through the API described below. Build and publish
-outputs include the JSON and schema; loading uses the executable's directory.
-Logger configuration, repeated-game orchestration, and delimited outcome exports
-belong to the caller.
+The console entry point configures and runs simulation batches, writes delimited
+outcomes, and logs each game through Serilog. `MonoSimEngine` also remains usable
+through the API described below. Build and publish outputs include the game JSON,
+schema, and application settings; default data loading uses the executable's
+directory.
+
+## Command line
+
+```text
+monosim <players> <strategies> [options]
+```
+
+The two positional arguments are required. `players` is an integer from 2 through
+6. `strategies` is a case-insensitive comma-delimited list of one through
+player-count values: `aggressive`, `conservative`, `infrastructure`,
+`adjacent-group`, `blue-green`, `novice`, or `random`. An omitted player's entry
+repeats the last strategy. Empty entries and unknown names are rejected.
+
+For example, `4 aggressive,conservative` gives player 1 the aggressive strategy
+and players 2–4 the conservative strategy. `4 random` draws independently for
+each player in each game. Names default to `Player 1` through `Player 6` with
+IDs `player-1` through `player-6`; starting cash, position, and jail status come
+from the selected game definition. Each game receives fresh player records.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--simulations N`, `-s N` | `1` | Positive number of games. |
+| `--maxrounds N`, `-r N` | `25 × players` | Positive round cap per game. |
+| `--definition PATH`, `-d PATH` | Bundled definition | Custom game definition. |
+| `--logroot PATH`, `-l PATH` | `logs` | Root for simulation and application folders. |
+| `--output PATH`, `-o PATH` | `results.csv` | Results file. |
+| `--delimiter CHAR` | Comma | Field separator, `tab`, or `\t`. |
+| `--seed N` | Generated | Signed 32-bit batch seed. |
+| `--shuffle-decks BOOL` | `true` | Enable deck shuffling, subject to the definition's shuffle setting. |
+| `--on-error stop\|continue` | `continue` | Stop scheduling after a game fails, or run the remaining games. |
+| `--help`, `-h` | — | Show usage without requiring positionals or creating files. |
+| `--version` | — | Show version without running games. |
+
+Logging flags appear in the next section. Options accept `--name value` and
+`--name=value`; booleans require `true` or `false`. Short aliases accept values
+the same way. Duplicate options, unknown flags, integer overflows, and extra
+positional arguments are rejected. Relative paths resolve from the working
+directory, except the default bundled definition and settings paths.
+
+Up to `min(4, Environment.ProcessorCount, simulations)` games run concurrently.
+Each engine and its strategy instances are isolated. The batch seed and zero-based
+simulation index derive each game's seed using unchecked 32-bit
+`batchSeed + index * 7919`. Strategy selection uses a separate seeded stream;
+random strategy draws do not consume dice or deck randomness. For the same
+application version, definition, options, and batch seed, results are reproducible
+regardless of worker scheduling. Simulation IDs and application run IDs are fresh
+correlation identifiers rather than seeded values.
+
+## Results and runtime errors
+
+Before any simulations start, an existing output file prompts for append,
+overwrite, or a new filename; the new-name option repeats the existence check.
+Quit or EOF cancels. If standard input is redirected, an existing path fails
+without modifying the file. Append validates the exact header, selected delimiter,
+UTF-8 encoding, complete quoted fields, and every existing row's field count.
+An empty existing file receives a header after append is explicitly chosen.
+
+Results are UTF-8 with a header and one row per simulation, written in completion
+order. A single synchronized writer flushes every completed row. Delimiters,
+quotes, and embedded newlines in field values are escaped with CSV-style quoting.
+The fixed schema supports appending batches with different player counts:
+
+- `ResultSchemaVersion`, `RunId`, `SimulationId`, `SimulationNumber`, and `Status`.
+- `BatchSeed`, `SimulationSeed`, `DefinitionId`, `DefinitionSchemaVersion`,
+  `DefinitionPath`, `PlayerCount`, `MaxRounds`, and `ShuffleDecks`.
+- `RoundsPlayed`, `TurnsPlayed`, `EndReason`, `WinnerIds`, `ErrorType`,
+  `ErrorMessage`, and `LogPath`.
+- For each of six player slots: `PlayerNStrategy`, `PlayerNCash`,
+  `PlayerNPortfolioValue`, `PlayerNBankrupt`, and `PlayerNWinner`.
+
+Unused player slots are blank. Actual randomly selected strategies are recorded.
+Shared winners appear as pipe-separated IDs and each winning player's flag is
+true. Monetary fields use invariant formatting. Failed games have status `failed`,
+their error details and configuration, and blank final-state fields; they are
+never assigned a fabricated winner. Cancellation during a game uses status
+`cancelled`. Appending does not renumber prior batches; `(RunId, SimulationNumber)`
+identifies an attempt within its batch, and `SimulationId` links directly to logs.
+
+With `--on-error stop`, already active games finish and record their results while
+no additional games begin. File-writing failures abort the batch. Ctrl+C stops
+scheduling and requests cancellation at engine turn/roll boundaries; completed
+rows remain in the results file. Logs drain and flush after workers finish.
+Exit codes are 0 for success, 1 for runtime/configuration/file errors or any failed
+game, 2 for invalid command-line arguments, and 130 for cancellation. No rows are
+created for simulations that never start.
+
+## Logging configuration
+
+Serilog writes newline-delimited compact JSON into one folder per simulation,
+relative to the working directory:
+
+```text
+logs/monosim-<SimulationId>/run.clef
+logs/monosim-<SimulationId>/run_001.clef
+logs/monosim-<SimulationId>/run_002.clef
+```
+
+The folder uses the engine's full `SimulationId`, which also appears in its
+events and final game state. Serilog adds numbered suffixes when rolling files
+by size. Startup, progress, and other messages without a simulation ID go to
+`logs/application-<RunId>/run.clef` and its rolled files. `--logroot results/logs`
+changes the root to `results/logs` while retaining `run.clef` as the base filename.
+The old `--log-file` option is replaced by `--logroot`.
+
+Engine fields remain separate JSON properties, including
+simulation ID, event sequence, round, turn, roll, player, signed amount, and new
+cash balance. `RunId` correlates events from one application invocation;
+`SchemaVersion` identifies the logging envelope. Exceptions include stack details.
+
+Defaults come from `appsettings.json` beside the executable, followed by
+`MONOSIM_` environment variables, then command-line overrides. The settings file
+is copied to build and publish outputs. Environment nesting uses double
+underscores, for example `MONOSIM_Logging__BufferSize=2048`.
+
+| Command-line option | Logging setting | Default |
+| --- | --- | --- |
+| `--log-config` | Settings file path | Executable's `appsettings.json` |
+| `--logroot`, `-l` | `RootDirectory` | `logs` (or configured `FilePath` parent) |
+| `--log-level` | `FileMinimumLevel` | `Information` |
+| `--log-console-level` | `ConsoleMinimumLevel` | `Warning` |
+| `--log-console-enabled` | `ConsoleEnabled` | `true` |
+| `--log-progress` | `ShowProgress` | `true` |
+| `--log-buffer-size` | `BufferSize` | `10000` events |
+| `--log-file-size-limit` | `FileSizeLimitBytes` | `67108864` bytes (64 MiB) |
+| `--log-retained-files` | `RetainedFileCountLimit` | `null` (retain all) |
+| `--log-max-open-files` | `MaxOpenFiles` | `8` writers |
+
+```powershell
+dotnet run -- 2 novice -l logs/example --log-buffer-size 2048
+dotnet run -- 2 novice --log-config appsettings.json --log-progress false
+```
+
+Levels use Serilog names: `Verbose`, `Debug`, `Information`, `Warning`, `Error`,
+and `Fatal`. Keep the file level at `Information` or lower to retain the complete
+simulation history. The console normally shows warnings/errors on stderr and
+explicit `MonoSim.Progress` information messages on stdout; routine engine
+events stay in the file. Console errors are concise; JSON records retain full
+exception details. Console and file thresholds are independent.
+
+File routing runs behind one bounded queue with `blockWhenFull: true`. When the
+writer falls behind, producers wait instead of dropping events. At most
+`MaxOpenFiles` file writers remain open; others are closed and reopened as needed
+without losing their file sequence. Files roll at the configured size, with no
+automatic deletion unless a retention count is set. Retention applies separately
+within each simulation or application folder. One event can exceed the size
+limit. Engine-generated identifiers keep concurrent simulations in separate
+folders without changing the engine's logger contract.
+
+Application shutdown drains and flushes queued events on success and handled
+errors. Invalid configuration or inaccessible paths produce a concise stderr
+message and exit code 1. Serilog's internal diagnostics also go to stderr and
+cause a nonzero application exit. Forced process termination can still lose
+buffered events. Logging does not provide a durable transaction journal.
+
+API callers can use the same pipeline while keeping the engine's `ILogger`
+constructor unchanged:
+
+```csharp
+using Microsoft.Extensions.Logging;
+using MonoSim.Logging;
+
+await using var logging = new SimulationLogging(LoggingOptions.Load());
+var engine = new MonoSimEngine(players, logging.Factory.CreateLogger<MonoSimEngine>());
+var final = engine.Play();
+var simulationLogPath = logging.GetSimulationFilePath(final.SimulationId!);
+```
+
+Dispose the logging session after all simulation producers have finished. A
+session may be shared across multiple simulations; routing uses each event's
+`SimulationId` automatically, including interleaved simulations. IDs used for
+folder lookup must contain at most 128 ASCII letters, digits, hyphens or
+underscores. Engine-generated IDs satisfy this requirement. Outcome CSV/TSV
+export uses the separate `ResultsWriter`.
 
 ## Contract
 
