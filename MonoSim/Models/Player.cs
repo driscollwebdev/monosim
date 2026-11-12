@@ -36,6 +36,9 @@ public sealed record Player
 
     public bool IsBankrupt { get; init; }
 
+    /// <summary>One-based round when bankruptcy became final; null for players still in the game.</summary>
+    public long? BankruptcyRound { get; init; }
+
     /// <summary>Property space IDs from the game definition, in acquisition order.</summary>
     public string[] OwnedPropertyIds { get; init; } = [];
 

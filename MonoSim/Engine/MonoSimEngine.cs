@@ -55,7 +55,7 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
         {
             throw new ArgumentException("SimulationId cannot be empty.", nameof(options));
         }
-        if (players.Length is < 2 or > 6 || players.Any(p => p is null || string.IsNullOrWhiteSpace(p.Id) || string.IsNullOrWhiteSpace(p.Name) || p.CashBalance < 0 || p.IsBankrupt) ||
+        if (players.Length is < 2 or > 6 || players.Any(p => p is null || string.IsNullOrWhiteSpace(p.Id) || string.IsNullOrWhiteSpace(p.Name) || p.CashBalance < 0 || p.IsBankrupt || p.BankruptcyRound is not null) ||
             players.Select(p => p.Id).Distinct(StringComparer.Ordinal).Count() != players.Length || players.Any(p => p.StrategyAdherence is < 0.75m or > 0.95m))
         {
             throw new ArgumentException("Provide two through six non-bankrupt players with unique nonempty IDs, names, nonnegative cash, and strategy adherence between 0.75 and 0.95.", nameof(players));

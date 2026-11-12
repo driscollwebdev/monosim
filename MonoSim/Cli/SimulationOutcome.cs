@@ -21,6 +21,7 @@ public sealed record SimulationOutcome(string RunId, string SimulationId, int Nu
     {
         $"Player{i}Strategy", $"Player{i}Cash", $"Player{i}PortfolioValue", $"Player{i}Bankrupt", $"Player{i}Winner"
     })).Concat(Enumerable.Range(1, 6).SelectMany(i => new[] { $"Player{i}Adherence", $"Player{i}EffectiveAdherence" }))
+        .Concat(Enumerable.Range(1, 6).Select(i => $"Player{i}BankruptcyRound"))
         .Append("TurnOrder").ToArray());
 
     public string[] Fields()
@@ -36,7 +37,7 @@ public sealed record SimulationOutcome(string RunId, string SimulationId, int Nu
         }
         var fields = new List<string>
         {
-            "3", RunId, SimulationId, Text(Number), status, Text(BatchSeed), Text(SimulationSeed), Definition.EditionId,
+            "4", RunId, SimulationId, Text(Number), status, Text(BatchSeed), Text(SimulationSeed), Definition.EditionId,
             Text(Definition.SchemaVersion), DefinitionPath, Text(InitialPlayers.Length), Text(MaximumRounds), Text(ShuffleDecks),
             Text(FinalState?.RoundNumber), Text(FinalState?.TurnNumber), FinalState?.EndReason?.ToString() ?? "",
             string.Join("|", FinalState?.WinnerIds ?? []), Error?.GetType().FullName ?? "", Error?.Message ?? "", LogPath
@@ -62,6 +63,19 @@ public sealed record SimulationOutcome(string RunId, string SimulationId, int Nu
             }
             var player = InitialPlayers[i];
             fields.AddRange([Text(player.StrategyAdherence), Text(player.StrategyAdherence + AdherenceBonuses.For(player.Strategy))]);
+        }
+        for (var i = 0; i < 6; i++)
+        {
+            long? bankruptcyRound = null;
+            if (i < InitialPlayers.Length)
+            {
+                var final = FinalState?.Players.Single(p => p.Id == InitialPlayers[i].Id);
+                if (final?.IsBankrupt == true)
+                {
+                    bankruptcyRound = final.BankruptcyRound;
+                }
+            }
+            fields.Add(Text(bankruptcyRound));
         }
         fields.Add(string.Join("|", TurnOrder));
         return fields.ToArray();

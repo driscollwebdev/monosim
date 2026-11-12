@@ -19,6 +19,7 @@ internal static class EngineTests
                 }
                 Expect<ArgumentException>(() => new MonoSimEngine([P("same", 0), P("same", 0)], new Recorder()));
                 Expect<ArgumentException>(() => new MonoSimEngine([P("a", 0) with { CompletedLaps = -1 }, P("b", 0)], new Recorder()));
+                Expect<ArgumentException>(() => new MonoSimEngine([P("a", 0) with { BankruptcyRound = 1 }, P("b", 0)], new Recorder()));
                 Expect<ArgumentNullException>(() => new MonoSimEngine([P("a", 0), P("b", 0)], null!));
                 _ = new MonoSimEngine(Enumerable.Range(0, 6).Select(i => P($"p{i}", 0)).ToArray(), new Recorder());
             }),
@@ -29,6 +30,7 @@ internal static class EngineTests
                 var final = e.Play();
                 Check(final.WinnerId == "b" && final.Phase == TurnPhase.Completed && final.Players.Count(p => !p.IsBankrupt) == 1, "No unique final winner.");
                 var loser = final.Players.Single(p => p.Id == "a");
+                Check(loser.BankruptcyRound == 1 && final.Players.Single(p => p.Id == "b").BankruptcyRound is null, "Incorrect bankruptcy round.");
                 Check(loser.IsBankrupt && loser.CashBalance == 0 && loser.OwnedPropertyIds.Length == 0 && final.Debts.Single().Remaining == 150, "Incorrect final bankruptcy or unpaid debt.");
                 Check(log.Entries.Any(x => x.Event == "GameCompleted") && log.Entries.Any(x => x.Event == "BankTransaction"), "Missing completion or transaction logs.");
                 Expect<InvalidOperationException>(() => e.Play());
@@ -143,7 +145,7 @@ internal static class EngineTests
                 var e = new MonoSimEngine([P("a", 0) with { OwnedPropertyIds = ["mediterranean-avenue", "baltic-avenue"] }, P("b", 500), P("c", 500)], log, options);
                 Expect<ScenarioCompleteException>(() => e.Play());
                 var a = e.GetState().Players.Single(p => p.Id == "a");
-                Check(!a.IsBankrupt && !a.HasDeclaredBankruptcy && a.CashBalance == 300, "Bankruptcy did not reverse after sufficient proceeds.");
+                Check(!a.IsBankrupt && !a.HasDeclaredBankruptcy && a.BankruptcyRound is null && a.CashBalance == 300, "Bankruptcy did not reverse after sufficient proceeds.");
                 Check(log.Entries.Any(x => x.Event == "AuctionPriceStruck" && x.Amount == 500) && log.Entries.Any(x => x.Event == "BankruptcyReversed"), "Auction was capped at trade valuation or recovery was not logged.");
             }),
             ("No-bid property packages return to the bank for zero", () =>

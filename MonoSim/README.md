@@ -98,13 +98,16 @@ The fixed schema supports appending batches with different player counts:
   `PlayerNPortfolioValue`, `PlayerNBankrupt`, and `PlayerNWinner`.
 - Twelve additional columns record `PlayerNAdherence` and
   `PlayerNEffectiveAdherence` for each of the six player slots.
-
+- Six `PlayerNBankruptcyRound` columns record the one-based round when each
+  player's bankruptcy became final. These are blank for survivors, unused slots,
+  and outcomes without final state. A bankruptcy declaration that is reversed
+  does not count as elimination.
 - `TurnOrder`: pipe-separated player IDs in their initial randomized turn order,
   such as `player-3|player-1|player-2`. This includes players later eliminated
   and is recorded for completed, failed, and cancelled simulations. Player-slot
   columns continue to follow player ID order.
 
-The current results schema is version 3. Version 1 and 2 files have different
+The current results schema is version 4. Version 1 through 3 files have different
 headers and cannot be appended to; choose a new filename or overwrite them.
 
 Unused player slots are blank. Actual randomly selected strategies are recorded.

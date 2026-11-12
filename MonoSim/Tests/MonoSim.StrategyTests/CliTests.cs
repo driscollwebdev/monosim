@@ -252,7 +252,7 @@ internal static class CliTests
                           var effective = decimal.Parse(row[column + 1], System.Globalization.CultureInfo.InvariantCulture);
                           Check(baseProbability is >= 0.75m and <= 0.95m);
                           Check(effective == baseProbability + MonoSim.Strategies.AdherenceBonuses.For(row[20 + slot * 5]));
-                          Check(row[0] == "3" && row.Skip(54).Take(8).All(string.IsNullOrEmpty));
+                          Check(row[0] == "4" && row.Skip(54).Take(8).All(string.IsNullOrEmpty));
                       }
                   }
                 foreach (var row in first.Rows().Skip(1))
@@ -305,6 +305,35 @@ internal static class CliTests
                 Check(fields.Length == SimulationOutcome.Headers.Count && fields[16] == "player-1|player-2");
                 Check(fields[24] == "True" && fields[29] == "True" && fields.Skip(30).Take(20).All(string.IsNullOrEmpty));
                 Check(SimulationOutcome.Headers[^1] == "TurnOrder" && fields[^1] == "player-1|player-2");
+                Check(fields.Skip(62).Take(6).All(string.IsNullOrEmpty));
+            }),
+            ("Bankruptcy results record the elimination round against the original player ID", () =>
+            {
+                using var files = new Files();
+                string? loserId = null;
+                var runner = new SimulationBatchRunner((players, logger, options) =>
+                {
+                    loserId = players[0].Id;
+                    var dice = new Queue<int[]>([[1, 2], [1, 2], [1, 5]]);
+                    var final = new MonoSimEngine(players.Select(p => p with { CashBalance = 50, BoardPosition = 29 }).ToArray(), logger,
+                        options with { EnableHumanDecisions = false, DiceRoller = () => dice.Dequeue() }).Play();
+                    Check(final.RoundNumber == 2 && final.TurnNumber == 3);
+                    Check(final.Players.Single(p => p.Id == loserId).BankruptcyRound == 2);
+                    return final;
+                });
+                var batch = Run(files, runner, simulations: 1);
+                Check(batch.Completed == 1 && batch.Failed == 0);
+                var row = files.Rows()[1];
+                for (var slot = 1; slot <= 6; slot++)
+                {
+                    var column = SimulationOutcome.Headers.ToList().IndexOf($"Player{slot}BankruptcyRound");
+                    var expected = "";
+                    if (loserId == $"player-{slot}")
+                    {
+                        expected = "2";
+                    }
+                    Check(row[column] == expected);
+                }
             }),
             ("Cancelled outcomes retain initial turn order without final state", () =>
             {
@@ -314,6 +343,7 @@ internal static class CliTests
                 };
                 var fields = outcome.Fields();
                 Check(fields[4] == "cancelled" && fields[^1] == "player-2|player-1");
+                Check(fields.Skip(62).Take(6).All(string.IsNullOrEmpty));
             }),
             ("Engine honors caller correlation IDs and cancellation", () =>
             {

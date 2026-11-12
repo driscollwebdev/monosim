@@ -140,7 +140,7 @@ public sealed partial class MonoSimEngine
             {
                 throw new InvalidOperationException("Final bankruptcy requires no cash and no remaining assets.");
             }
-            players[id] = players[id] with { IsBankrupt = true, IsInJail = false, FailedJailRolls = 0 };
+            players[id] = players[id] with { IsBankrupt = true, BankruptcyRound = round, IsInJail = false, FailedJailRolls = 0 };
             Log("BankruptcyFinalized", id, $"No assets or cash remain; unpaid debt {Owed(id)} stays recorded.");
         }
     }
