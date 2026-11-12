@@ -99,8 +99,13 @@ The fixed schema supports appending batches with different player counts:
 - Twelve additional columns record `PlayerNAdherence` and
   `PlayerNEffectiveAdherence` for each of the six player slots.
 
-The current results schema is version 2. Version 1 files have a different
-header and cannot be appended to; choose a new filename or overwrite them.
+- `TurnOrder`: pipe-separated player IDs in their initial randomized turn order,
+  such as `player-3|player-1|player-2`. This includes players later eliminated
+  and is recorded for completed, failed, and cancelled simulations. Player-slot
+  columns continue to follow player ID order.
+
+The current results schema is version 3. Version 1 and 2 files have different
+headers and cannot be appended to; choose a new filename or overwrite them.
 
 Unused player slots are blank. Actual randomly selected strategies are recorded.
 Shared winners appear as pipe-separated IDs and each winning player's flag is

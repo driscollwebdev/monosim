@@ -9,6 +9,9 @@ public sealed record SimulationOutcome(string RunId, string SimulationId, int Nu
     SimulationDefinition Definition, string DefinitionPath, int MaximumRounds, bool ShuffleDecks, string LogPath,
     Player[] InitialPlayers, GameState? FinalState, Exception? Error)
 {
+    /// <summary>Player IDs in the initial randomized order, including players later eliminated.</summary>
+    public string[] TurnOrder { get; init; } = InitialPlayers.Select(p => p.Id).ToArray();
+
     public static IReadOnlyList<string> Headers { get; } = Array.AsReadOnly(new[]
     {
         "ResultSchemaVersion", "RunId", "SimulationId", "SimulationNumber", "Status", "BatchSeed", "SimulationSeed",
@@ -17,7 +20,8 @@ public sealed record SimulationOutcome(string RunId, string SimulationId, int Nu
     }.Concat(Enumerable.Range(1, 6).SelectMany(i => new[]
     {
         $"Player{i}Strategy", $"Player{i}Cash", $"Player{i}PortfolioValue", $"Player{i}Bankrupt", $"Player{i}Winner"
-    })).Concat(Enumerable.Range(1, 6).SelectMany(i => new[] { $"Player{i}Adherence", $"Player{i}EffectiveAdherence" })).ToArray());
+    })).Concat(Enumerable.Range(1, 6).SelectMany(i => new[] { $"Player{i}Adherence", $"Player{i}EffectiveAdherence" }))
+        .Append("TurnOrder").ToArray());
 
     public string[] Fields()
     {
@@ -32,7 +36,7 @@ public sealed record SimulationOutcome(string RunId, string SimulationId, int Nu
         }
         var fields = new List<string>
         {
-            "2", RunId, SimulationId, Text(Number), status, Text(BatchSeed), Text(SimulationSeed), Definition.EditionId,
+            "3", RunId, SimulationId, Text(Number), status, Text(BatchSeed), Text(SimulationSeed), Definition.EditionId,
             Text(Definition.SchemaVersion), DefinitionPath, Text(InitialPlayers.Length), Text(MaximumRounds), Text(ShuffleDecks),
             Text(FinalState?.RoundNumber), Text(FinalState?.TurnNumber), FinalState?.EndReason?.ToString() ?? "",
             string.Join("|", FinalState?.WinnerIds ?? []), Error?.GetType().FullName ?? "", Error?.Message ?? "", LogPath
@@ -59,6 +63,7 @@ public sealed record SimulationOutcome(string RunId, string SimulationId, int Nu
             var player = InitialPlayers[i];
             fields.AddRange([Text(player.StrategyAdherence), Text(player.StrategyAdherence + AdherenceBonuses.For(player.Strategy))]);
         }
+        fields.Add(string.Join("|", TurnOrder));
         return fields.ToArray();
     }
 

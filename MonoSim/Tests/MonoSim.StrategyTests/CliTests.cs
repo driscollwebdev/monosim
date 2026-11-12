@@ -147,6 +147,7 @@ internal static class CliTests
                 foreach (var contents in new[]
                 {
                     "wrong header\n", DelimitedText.Format(SimulationOutcome.Headers, ';') + "\n",
+                    DelimitedText.Format(SimulationOutcome.Headers.Take(SimulationOutcome.Headers.Count - 1), ',') + "\n",
                     DelimitedText.Format(SimulationOutcome.Headers, ',') + "\nwrong,row\n",
                     DelimitedText.Format(SimulationOutcome.Headers, ',') + "\n\"unfinished"
                 })
@@ -224,6 +225,10 @@ internal static class CliTests
                 var a = Capture(first);
                 var b = Capture(second);
                 Check(a.Values.Distinct().Count() > 1 && a.All(pair => b[pair.Key] == pair.Value));
+                foreach (var row in first.Rows().Skip(1))
+                {
+                    Check(row[^1] == a[int.Parse(row[6])].Replace(',', '|'));
+                }
                 Check(first.Rows().Skip(1).All(row => row[20] == "aggressive" && row[25] == "conservative" && row[30] == "infrastructure" && row[35] == "novice"));
             }),
             ("Real seeded parallel batches reproduce strategies and outcomes", () =>
@@ -247,7 +252,7 @@ internal static class CliTests
                           var effective = decimal.Parse(row[column + 1], System.Globalization.CultureInfo.InvariantCulture);
                           Check(baseProbability is >= 0.75m and <= 0.95m);
                           Check(effective == baseProbability + MonoSim.Strategies.AdherenceBonuses.For(row[20 + slot * 5]));
-                          Check(row[0] == "2" && row.Skip(54).All(string.IsNullOrEmpty));
+                          Check(row[0] == "3" && row.Skip(54).Take(8).All(string.IsNullOrEmpty));
                       }
                   }
                 foreach (var row in first.Rows().Skip(1))
@@ -271,10 +276,12 @@ internal static class CliTests
             ("Continue records failed rows with quoted errors and runs remaining games", () =>
             {
                 using var files = new Files();
+                string? failedTurnOrder = null;
                 var runner = new SimulationBatchRunner((players, _, options) =>
                 {
                     if (options.RandomSeed == 42)
                     {
+                        failedTurnOrder = string.Join("|", players.Select(p => p.Id));
                         throw new InvalidOperationException("failed, \"example\"\nnext line");
                     }
                     return Final(players, options);
@@ -283,6 +290,7 @@ internal static class CliTests
                 Check(batch.Completed == 5 && batch.Failed == 1 && files.Rows().Length == 7);
                 var failure = files.Rows().Skip(1).Single(r => r[4] == "failed");
                 Check(failure[18] == "failed, \"example\"\nnext line" && File.Exists(failure[19]));
+                Check(failure[^1] == failedTurnOrder);
             }),
             ("Stop-on-error finishes active work and does not start the full batch", () =>
             {
@@ -296,6 +304,16 @@ internal static class CliTests
                 var fields = Outcome().Fields();
                 Check(fields.Length == SimulationOutcome.Headers.Count && fields[16] == "player-1|player-2");
                 Check(fields[24] == "True" && fields[29] == "True" && fields.Skip(30).Take(20).All(string.IsNullOrEmpty));
+                Check(SimulationOutcome.Headers[^1] == "TurnOrder" && fields[^1] == "player-1|player-2");
+            }),
+            ("Cancelled outcomes retain initial turn order without final state", () =>
+            {
+                var outcome = Outcome() with
+                {
+                    TurnOrder = ["player-2", "player-1"], FinalState = null, Error = new OperationCanceledException()
+                };
+                var fields = outcome.Fields();
+                Check(fields[4] == "cancelled" && fields[^1] == "player-2|player-1");
             }),
             ("Engine honors caller correlation IDs and cancellation", () =>
             {

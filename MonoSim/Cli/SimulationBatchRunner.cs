@@ -75,7 +75,10 @@ public sealed class SimulationBatchRunner(Func<Player[], ILogger, MonoSimEngineO
                 }
                 // File failures abort the batch; they are not recoverable simulation errors.
                 results.Write(new(logging.RunId, id, index + 1, seed, gameSeed, definition, options.DefinitionPath,
-                    options.MaximumRounds, options.ShuffleDecks, logging.GetSimulationFilePath(id), players, final, failure));
+                    options.MaximumRounds, options.ShuffleDecks, logging.GetSimulationFilePath(id), players, final, failure)
+                {
+                    TurnOrder = turnOrder.Select(p => p.Id).ToArray()
+                });
                 if (failure is null)
                 {
                     Interlocked.Increment(ref completed);
