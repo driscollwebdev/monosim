@@ -15,6 +15,7 @@ public sealed record MonoSimEngineOptions
     public IReadOnlyDictionary<string, string[]>? InitialDeckOrder { get; init; }
     public Func<Player, IStrategyActionExecutor, IPlayingStrategy>? StrategyFactory { get; init; }
     public IStrategyMarketPolicy? MarketPolicy { get; init; }
+    public TradeNegotiationOptions TradeNegotiation { get; init; } = new();
 
     /// <summary>Optional complete-round limit; highest portfolio value wins, with shared exact ties.</summary>
     public long? MaximumRounds { get; init; }

@@ -38,10 +38,15 @@ public sealed class SimulationBatchRunner(Func<Player[], ILogger, MonoSimEngineO
                 var gameSeed = unchecked(seed + index * 7919);
                 var id = Guid.NewGuid().ToString("N");
                 var players = CreatePlayers(options, definition, gameSeed);
+                var turnOrder = players.ToArray();
+                var turnRandom = new Random(unchecked(gameSeed ^ 0x5455524E));
+                turnRandom.Shuffle(turnOrder);
                 GameState? final = null;
                 Exception? failure = null;
                 try
                 {
+                    logger.LogInformation("Simulation {SimulationId} turn order: {TurnOrder}", id,
+                        string.Join(", ", turnOrder.Select(p => p.Id)));
                     var engineOptions = new MonoSimEngineOptions
                     {
                         SimulationId = id, RandomSeed = gameSeed, DefinitionPath = options.DefinitionPath,
@@ -51,11 +56,11 @@ public sealed class SimulationBatchRunner(Func<Player[], ILogger, MonoSimEngineO
                     var engineLogger = logging.Factory.CreateLogger<MonoSimEngine>();
                     if (simulate is not null)
                     {
-                        final = simulate(players, engineLogger, engineOptions);
+                        final = simulate(turnOrder, engineLogger, engineOptions);
                     }
                     else
                     {
-                        final = new MonoSimEngine(players, engineLogger, engineOptions).Play();
+                        final = new MonoSimEngine(turnOrder, engineLogger, engineOptions).Play();
                     }
                 }
                 catch (Exception error)

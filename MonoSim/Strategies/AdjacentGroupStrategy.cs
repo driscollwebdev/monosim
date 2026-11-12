@@ -165,7 +165,7 @@ public sealed class AdjacentGroupStrategy : IPlayingStrategy, IStrategyGroupFocu
                 {
                     priority = bothOwned ? 1 : -1;
                 }
-                else if (complete && property.ColorGroup is not null)
+                else if ((complete || bothOwned && action.Type == StrategyActionType.BuyMortgagedProperty) && property.ColorGroup is not null)
                 {
                     priority = CompletesNewGroup(state, owned, after) ? 0 : 2;
                 }

@@ -7,6 +7,7 @@ namespace MonoSim;
 public sealed partial class MonoSimEngine
 {
     private readonly HashSet<string> acceptedOffers = new(StringComparer.Ordinal);
+    private readonly HashSet<string> loggedNegotiations = new(StringComparer.Ordinal);
 
     public StrategyTurnState AcceptTradeOffer(string playerId, string offerId)
     {
@@ -98,9 +99,51 @@ public sealed partial class MonoSimEngine
                     BankFees = received.Where(p => properties[p].IsMortgaged).Sum(p => properties[p].MortgageValue * state.MortgageInterestRate),
                     OtherPlayerBankFees = given.Where(p => properties[p].IsMortgaged).Sum(p => properties[p].MortgageValue * state.MortgageInterestRate)
                 };
+                var history = new List<PropertyTrade>();
+                if (market is IStrategyTradeNegotiator negotiator)
+                {
+                    var opening = MarketDecision(() => negotiator.CreateOffer(CopyPlayer(players[id]), state, CopyTrade(terms)));
+                    if (opening is null || opening.OtherPlayerId != otherId)
+                    {
+                        return;
+                    }
+                    terms = opening;
+                }
                 if (!TradeValidator.Validate(players[id], state, terms).IsValid ||
-                    !MarketDecision(() => market.AcceptTrade(CopyPlayer(players[id]), state, CopyTrade(terms))) ||
-                    !MarketDecision(() => market.AcceptTrade(CopyPlayer(players[otherId]), Snapshot(otherId, false), ReverseTrade(id, terms))))
+                    !MarketDecision(() => market.AcceptTrade(CopyPlayer(players[id]), state, CopyTrade(terms))))
+                {
+                    return;
+                }
+                history.Add(CopyTrade(terms));
+                var otherState = Snapshot(otherId, false);
+                if (!MarketDecision(() => market.AcceptTrade(CopyPlayer(players[otherId]), otherState, ReverseTrade(id, terms))))
+                {
+                    TraceNegotiation("TradeProposalDeclined", otherId, id, terms);
+                    if (market is not IStrategyTradeNegotiator bargaining)
+                    {
+                        return;
+                    }
+                    var counter = MarketDecision(() => bargaining.CounterOffer(CopyPlayer(players[otherId]), otherState, ReverseTrade(id, terms)));
+                    if (counter is null)
+                    {
+                        return;
+                    }
+                    terms = ReverseTrade(otherId, counter);
+                    history.Add(CopyTrade(terms));
+                    TraceNegotiation("TradeCounterProposed", otherId, id, terms);
+                    if (!MarketDecision(() => market.AcceptTrade(CopyPlayer(players[id]), state, CopyTrade(terms))))
+                    {
+                        TraceNegotiation("TradeCounterDeclined", id, otherId, terms);
+                        var response = MarketDecision(() => bargaining.CounterOffer(CopyPlayer(players[id]), state, CopyTrade(terms)));
+                        if (response is null || !MarketDecision(() => market.AcceptTrade(CopyPlayer(players[otherId]), otherState, ReverseTrade(id, response))))
+                        {
+                            return;
+                        }
+                        terms = response;
+                        history.Add(CopyTrade(terms));
+                    }
+                }
+                if (!TradeValidator.Validate(players[id], state, terms).IsValid)
                 {
                     return;
                 }
@@ -114,12 +157,26 @@ public sealed partial class MonoSimEngine
                 candidates.Add(new()
                 {
                     Id = actionId, Type = kind, Trade = terms, PropertyId = propertyId, Cost = terms.NetCost,
+                    NegotiationHistory = history.Select(CopyTrade).ToArray(),
                     CompletesColorGroup = InfrastructureStrategy.CompletesNewGroup(state, players[id].OwnedPropertyIds.ToHashSet(StringComparer.Ordinal),
                         players[id].OwnedPropertyIds.Except(given).Concat(received).ToHashSet(StringComparer.Ordinal))
                 });
             }
         }
         return candidates;
+    }
+
+    private void TraceNegotiation(string name, string actor, string other, PropertyTrade terms)
+    {
+        if (terms.OtherPlayerId == actor)
+        {
+            terms = ReverseTrade(other, terms);
+        }
+        var description = $"{other}: {System.Text.Json.JsonSerializer.Serialize(terms)}";
+        if (loggedNegotiations.Add($"{turn}:{rollNumber}:{actor}:{name}:{description}"))
+        {
+            Log(name, actor, description);
+        }
     }
 
     private void ExecuteTrade(string id, StrategyAction action, GameState state)
@@ -144,6 +201,30 @@ public sealed partial class MonoSimEngine
         {
             Log("TradeDeclined", other, $"Declined offer from {id}.");
             throw new InvalidOperationException("The counterparty has not accepted the exchange.");
+        }
+        if (submitted is null && action.NegotiationHistory.Length > 1)
+        {
+            var opening = action.NegotiationHistory[0];
+            if (opening.OtherPlayerId != other || action.NegotiationHistory.Any(t => t.OtherPlayerId != other ||
+                !opening.PropertyIdsGiven.Concat(opening.PropertyIdsReceived).Intersect(t.PropertyIdsGiven.Concat(t.PropertyIdsReceived)).Any()) ||
+                action.NegotiationHistory.Any(t => !TradeValidator.Validate(players[id], state, t).IsValid) ||
+                System.Text.Json.JsonSerializer.Serialize(action.NegotiationHistory[^1]) != System.Text.Json.JsonSerializer.Serialize(trade))
+            {
+                throw new InvalidOperationException("Negotiation history must retain its original two parties and at least one original property.");
+            }
+            var root = SubmitTradeOffer(id, opening);
+            for (var i = 1; i < action.NegotiationHistory.Length; i++)
+            {
+                var actor = id;
+                var counter = action.NegotiationHistory[i];
+                if (i % 2 == 1)
+                {
+                    actor = other;
+                    counter = ReverseTrade(id, counter);
+                }
+                submitted = SubmitTradeOffer(actor, counter with { OriginalOfferId = root.Id });
+            }
+            trade = trade with { OriginalOfferId = root.Id };
         }
         submitted ??= SubmitTradeOffer(id, trade);
         var history = TradeValidator.RecordCompletedTrade(players[id], Snapshot(id, false), trade);

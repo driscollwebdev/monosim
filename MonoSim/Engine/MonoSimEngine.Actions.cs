@@ -13,6 +13,7 @@ public sealed partial class MonoSimEngine
         {
             throw new InvalidOperationException("Actions may execute only in the acting player's decision window.");
         }
+        options.CancellationToken.ThrowIfCancellationRequested();
         if (declared && phase != TurnPhase.RollAndMovement)
         {
             throw new InvalidOperationException("No actions may follow a completion declaration.");

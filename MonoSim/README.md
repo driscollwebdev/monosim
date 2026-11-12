@@ -66,7 +66,11 @@ Up to `min(4, Environment.ProcessorCount, simulations)` games run concurrently.
 Each engine and its strategy instances are isolated. The batch seed and zero-based
 simulation index derive each game's seed using unchecked 32-bit
 `batchSeed + index * 7919`. Strategy selection uses a separate seeded stream;
-random strategy draws do not consume dice or deck randomness. For the same
+random strategy draws do not consume dice or deck randomness. Each simulation
+also shuffles its turn order using a separate stream seeded with
+`simulationSeed ^ 0x5455524E`. Player IDs, names, and assigned strategies stay
+together, and results columns continue to refer to the original player numbers.
+The chosen order is recorded in that simulation's log. For the same
 application version, definition, options, and batch seed, results are reproducible
 regardless of worker scheduling. Simulation IDs and application run IDs are fresh
 correlation identifiers rather than seeded values.
@@ -405,8 +409,8 @@ promise of future assets or cash.
 
 `PropertyTrade` records the counterparty, properties and cards given and received,
 cash paid and received, and each party's mandatory bank fees. Trades are atomic
-engine actions. The shared trade rules below determine equal values on both
-sides, before mandatory bank charges. Both positive and negative net
+engine actions. The shared valuation rules below provide reference prices for
+negotiation, with mandatory bank charges paid separately. Both positive and negative net
 cash costs are supported; an exchange can credit the player's ledger. The engine
 still verifies seller consent, funding, mortgage charges, and ownership before
 executing. Normal focus-group trades can be cash-only purchases; the requirement
@@ -602,7 +606,7 @@ support cash, any mix of properties, and held Get Out of Jail Free cards. They
 have no future-income, rent-waiver, or third-party fields. JSON deserialization
 rejects unknown consideration fields instead of silently ignoring them.
 
-| Asset | Exchange value |
+| Asset | Reference value |
 | --- | --- |
 | Unimproved, unmortgaged property | Printed purchase price |
 | Improved property | Printed price plus resale value of its buildings |
@@ -617,11 +621,13 @@ unimproved under the existing mortgage prerequisite. Populate `MortgageValue`,
 Player records now include `HeldGetOutOfJailFreeCardIds`, using the original deck
 card IDs so cards can later return to the correct deck.
 
-Each side's asset value plus its cash payment must exactly equal the other side.
+Reference values support negotiation, portfolio scoring, and liquidity calculations;
+they no longer impose equal-value trades. Parties may agree on different prices
+or unequal asset exchanges.
 `BankFees` is the acting player's mortgage-transfer interest;
 `OtherPlayerBankFees` is the counterparty's. Each recipient owes interest on
-the mortgaged properties they receive. These charges are **outside** the balanced
-exchange. Both cash balances after net settlement and fees must be nonnegative.
+the mortgaged properties they receive. These charges are separate bank payments.
+Both cash balances after net settlement and fees must be nonnegative.
 Load `GameState.BuildingResaleFraction`, `MortgageInterestRate`, and
 `GetOutOfJailFreeCardTradeValue` from the definition's corresponding rule values.
 
@@ -630,7 +636,7 @@ A counteroffer's `OriginalOfferId` must identify the root original offer, with
 the same two participants. Its combined given/received properties must include
 at least one property appearing on either side of that original offer. Either
 or both original properties may be retained, regardless of direction. Every
-counteroffer is still independently value-balanced. Cash/card-only originals
+counteroffer is still independently validated for ownership, funding, and fees. Cash/card-only originals
 have no property that could satisfy this counteroffer requirement.
 
 `RecordCompletedTrade` validates and records receipts without moving assets.
@@ -817,11 +823,53 @@ and an `AssetBundle`; a bundle may contain several owned properties and cards.
 engine. The default policy follows the built-in strategy families' current group
 focus and reserve preferences; it may be replaced through options. As configured
 for these simulations, auction bids may use available cash rather than being
-capped at trade valuation. Transfer interest and due debts are deducted from
-bidder funding. Proxy bids clear at the runner-up's ceiling plus $1, capped at
-the winning ceiling; a sole bidder pays $1. Equal ceilings use original player
-order. A struck price is committed immediately and cannot be rescinded. Auctions
-are the explicit exception to ordinary equal-value trade pricing.
+capped at trade valuation for aggressive and target-focused bidding. Transfer
+interest and due debts are deducted from bidder funding. Auctions use successive
+binding bids in the simulation's player order, excluding the seller, finalized
+bankrupt players, and provisionally bankrupt players. A struck price is committed
+immediately and cannot be rescinded. Auctions have market-determined prices,
+independently of ordinary trade negotiations.
+
+The opening ask is half the bundle's auction liquidation collateral, rounded up
+to a whole dollar. Collateral is the sum of each property's mortgage principal
+(whether mortgaged or not), plus $50 per held jail-free card. Buildings must
+already have been sold to the bank before titles enter an auction. This auction
+calculation deliberately includes already mortgaged titles, as required by the
+auction rules; bankruptcy's guaranteed-liquidity calculation still excludes them.
+
+| Current offer or opening ask | Minimum increment |
+| --- | --- |
+| Below $100 | $10 |
+| $100 through less than $500 | $25 |
+| $500 through $1,000 inclusive | $50 |
+| Above $1,000 | $100 |
+
+The first bid raises the opening ask using its tier; later bids raise the actual
+highest bid. Aggressive bids twice the minimum increment, capped by its available
+cash. Infrastructure, Adjacent Group, and Blue-Green also double their increments
+when a bundle contains a desired target. A capped bid is allowed only if it still
+meets the minimum raise. Players can bid more through a custom live policy.
+Passing withdraws a bidder for that auction. The current leader does not bid
+against itself, and wins once all rivals withdraw. If nobody makes a legal opening
+raise, assets return to the bank for $0 under the existing no-bid procedure.
+
+Other bidders use ordinary increments and cap their bids at reference value.
+They can bluff even without genuine acquisition interest when an active aggressive
+or target-focused rival could still respond based on its publicly visible cash.
+Bluffs are limited by reference value, available cash, transfer fees, and the
+bidder's own strategy reserves. Opponents' private ceilings and reserve decisions
+are not exposed. A bluff can therefore win unexpectedly, and its bidder must
+complete the purchase. Target strategies keep their reserves during their own
+overbids and bluffs, including Blue-Green's final-side reserve exception.
+
+`IStrategyAuctionPolicy.NextBid` receives `AuctionState` with the bundle, reference
+value, collateral, opening ask, current high bid, leader, and active bidder IDs.
+It returns a binding bid or null to pass. `MaximumBid` remains available for private
+acquisition-interest ceilings; custom market policies without the live interface
+use ordinary minimum raises up to their supplied ceilings. The engine independently
+clamps every bid to cash after outstanding debts and bank fees. Opening asks,
+actual bids, passes, and struck prices are logged; private willingness ceilings
+are not logged as bids.
 
 The engine generates candidate cash purchases, cash sales, and property-for-property
 swaps, checks both parties' market decisions, and revalidates before execution.
@@ -833,6 +881,71 @@ entire full turn. Market callbacks receive copied state and cannot execute
 reentrant game actions. All transfers update ownership, balances, mortgage totals,
 held cards, and cash ledgers. Trading an improved title keeps its buildings on
 that title without changing bank stock.
+
+### Strategy trade negotiations
+
+For non-novice strategies, a voluntary trade must improve consolidation toward
+monopolies, acquire a desired primary target, buy a mortgaged bargain, or raise
+cash for a specific investment the player otherwise cannot afford. Funding
+checks consider the next desired unowned property, retained mortgage redemptions,
+and legal development in a completed group. A cash sale is not accepted simply
+because it increases the balance. Existing cash-debt rescue remains available.
+The mortgage-bargain exception applies to cash acquisitions, not exchanges that
+merely swap mortgaged assets. Non-novice players also decline voluntary buybacks
+of properties they sold earlier in the same full turn, preventing sale/repurchase
+cycles from repeatedly claiming the same strategic benefit. Direct two-party
+returns remain legal; this is a strategy preference, not a new wash-trade rule.
+
+Players avoid giving away any property reachable on their next direct dice roll,
+including mortgaged titles and destinations across GO. Conservative alone uses
+two successive direct rolls in pre-roll and combined post-roll/pre-roll phases;
+it uses one in post-roll or debt resolution. All other strategies use one roll
+regardless of phase. Card movement is excluded. A cash-raising trade that fully
+funds an existing debt can bypass this avoidance preference. These are strategy
+preferences, not additional restrictions in `TradeValidator`.
+
+Aggressive seeks consolidation and accepts singleton-for-property swaps when
+they increase progress in another group. Simply adding a new singleton through
+a trade is insufficient. It also seeks mortgaged bargains on every turn and
+redeems/develops its holdings with available cash. It opens near reference value
+and can pay up to 1.5 times reference value to complete a monopoly.
+
+Conservative normally initiates only monopoly-completing deals, mortgage bargains,
+or investment-funding sales, and makes at most one completed initiated trade per
+full turn. It asks for 2 times the net reference value released and accepts at
+least 1.5 times, provided the cash serves an investment need. It can counter even
+when its asking price will be rejected. Mortgage purchases are capped at principal,
+with bank interest paid separately. It can redeem acquired mortgages outside its
+initial group using positive full-turn cash flow and improve any completed group
+at most once per full turn.
+
+Infrastructure, Adjacent Group, and Blue-Green seek their specific primary targets
+with aggressive pricing. They retain target properties, including after their
+trading mode changes. Once all primary target properties are owned, trading switches
+to conservative bargaining immediately; hotels or contained infrastructure are not
+prerequisites for that switch. Their existing purchase, development, reserve, and
+jail policies otherwise continue. Owning both adjacent color groups now permits
+outside mortgage bargains while primary development continues.
+
+`MonoSimEngineOptions.TradeNegotiation` accepts `TradeNegotiationOptions` to change
+`MonopolyCompletionMultiple` (1.5), `ConservativeAskingMultiple` (2), and
+`ConservativeMinimumMultiple` (1.5). The asking multiple must be at least the
+minimum, and all multiples must be at least one. API callers can also supply these
+options directly to `DefaultStrategyMarketPolicy`.
+
+`IStrategyTradeNegotiator` plans opening offers and counteroffers. Candidate
+negotiations allow a seller counter and one buyer response. The engine offers
+only terms accepted by both sides as executable actions, retaining their opening
+and counter terms in `StrategyAction.NegotiationHistory`. Execution revalidates and
+publishes the property-continuous offer chain before atomically settling the agreed
+terms. Declined proposals and counter decisions are logged once per distinct
+candidate per roll; these planning events are distinct from `TradeCompleted`.
+
+Novice purchase, mutual-monopoly probability, development, jail, and no-initiation
+policies are unchanged. It does not inherit the new general consolidation,
+price-multiple, or blanket property-avoidance preferences. Its existing acceptance
+logic now applies to unequal exchanges made legal by the rule change, while its
+financial-jeopardy check and legal funding requirements still apply.
 
 ### Logs and reproducibility
 
@@ -896,8 +1009,9 @@ the configured dice distribution, including the unequal likelihood of dice
 totals. Chance and Community Chest movement is not predicted. New jail arrivals
 wait until pre-roll to consider release.
 
-Auction interest follows the same property probabilities; an interested novice
-may bid up to cash available after transfer fees. Property purchase decisions are
+Auction interest follows the same property probabilities. Live novice bidding
+uses ordinary increments with a reference-value ceiling, and it may bluff against
+active susceptible rivals under the shared auction policy. Property purchase decisions are
 sampled once per landing; auction decisions are cached per turn, roll, and bundle.
 Engine-created novices use independent player-specific random streams derived
 from the simulation seed, keeping runs reproducible without consuming dice or

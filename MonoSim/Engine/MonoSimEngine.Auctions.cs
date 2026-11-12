@@ -1,4 +1,5 @@
 using MonoSim.Models;
+using MonoSim.Strategies;
 using MonoSim.Trading;
 
 namespace MonoSim;
@@ -16,27 +17,64 @@ public sealed partial class MonoSimEngine
         Log("AuctionStarted", seller, System.Text.Json.JsonSerializer.Serialize(bundle));
         var valuation = bundle.PropertyIds.Sum(p => TradeValidator.PropertyValue(properties[p], definition.Money("buildingResaleFraction"))) + bundle.CardIds.Length * 50;
         var fees = bundle.PropertyIds.Where(p => properties[p].IsMortgaged).Sum(p => properties[p].MortgageValue * definition.Money("mortgageInterestRate"));
+        var liquidValue = AuctionRules.LiquidValue(bundle, Snapshot(null, false));
+        var opening = decimal.Ceiling(liquidValue / 2);
+        Log("AuctionOpeningAsk", seller, $"Half of bundle liquidation collateral {liquidValue}, rounded up to a whole dollar; reference value {valuation}.", opening);
         var ceilings = new Dictionary<string, decimal>();
-        foreach (var bidder in order.Where(id => id != seller && !players[id].IsBankrupt))
+        var bidders = order.Where(id => id != seller && !players[id].IsBankrupt && !players[id].HasDeclaredBankruptcy).ToArray();
+        if (market is not IStrategyAuctionPolicy)
         {
-            var maximum = MarketDecision(() => market.MaximumBid(CopyPlayer(players[bidder]), Snapshot(bidder, false), bundle with { PropertyIds = [.. bundle.PropertyIds], CardIds = [.. bundle.CardIds] }, valuation, fees));
-            ceilings[bidder] = decimal.Floor(Math.Max(0, Math.Min(maximum, players[bidder].CashBalance - Owed(bidder) - fees)));
+            foreach (var bidder in bidders)
+            {
+                var maximum = MarketDecision(() => market.MaximumBid(CopyPlayer(players[bidder]), Snapshot(bidder, false), bundle with { PropertyIds = [.. bundle.PropertyIds], CardIds = [.. bundle.CardIds] }, valuation, fees));
+                ceilings[bidder] = decimal.Floor(Math.Max(0, Math.Min(maximum, players[bidder].CashBalance - Owed(bidder) - fees)));
+            }
         }
         string? winner = null;
         decimal price = 0;
-        // Binding proxy bids clear at the runner-up's limit plus $1, capped by the winner's limit.
-        var ranked = ceilings.Where(b => b.Value >= 1).OrderByDescending(b => b.Value).ThenBy(b => Array.IndexOf(order, b.Key)).ToArray();
-        if (ranked.Length > 0)
+        var active = bidders.ToHashSet(StringComparer.Ordinal);
+        while (active.Count > 0)
         {
-            winner = ranked[0].Key;
-            price = 1;
-            if (ranked.Length > 1)
+            var raised = false;
+            foreach (var bidder in bidders.Where(id => active.Contains(id)))
             {
-                price = Math.Min(ranked[0].Value, ranked[1].Value + 1);
+                options.CancellationToken.ThrowIfCancellationRequested();
+                if (bidder == winner)
+                {
+                    continue;
+                }
+                decimal? current = null;
+                if (winner is not null)
+                {
+                    current = price;
+                }
+                var auction = new AuctionState(seller, bundle with { PropertyIds = [.. bundle.PropertyIds], CardIds = [.. bundle.CardIds] },
+                    valuation, liquidValue, opening, current, winner, bidders.Where(active.Contains).ToArray());
+                decimal? offered;
+                if (market is IStrategyAuctionPolicy live)
+                {
+                    offered = MarketDecision(() => live.NextBid(CopyPlayer(players[bidder]), Snapshot(bidder, false), auction));
+                }
+                else
+                {
+                    offered = Math.Min(ceilings[bidder], auction.MinimumBid);
+                }
+                var budget = Math.Max(0, players[bidder].CashBalance - Owed(bidder) - fees);
+                var bid = Math.Min(offered ?? 0, budget);
+                if (offered is null || bid < auction.MinimumBid)
+                {
+                    active.Remove(bidder);
+                    Log("AuctionPassed", bidder, "Withdrew; no affordable legal raise selected.");
+                    continue;
+                }
+                winner = bidder;
+                price = bid;
+                raised = true;
+                Log("AuctionBid", bidder, $"Binding bid; previous offer {auction.CurrentOffer}; minimum increment {auction.MinimumIncrement}; fees {fees} kept separate.", bid);
             }
-            foreach (var bidder in ranked)
+            if (!raised || winner is not null && active.Count == 1)
             {
-                Log("AuctionBid", bidder.Key, $"Maximum committed bid {bidder.Value}; current cash and fees verified.", bidder.Value);
+                break;
             }
         }
         if (winner is null)

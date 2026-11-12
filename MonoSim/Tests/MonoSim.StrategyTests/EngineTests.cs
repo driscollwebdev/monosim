@@ -134,7 +134,7 @@ internal static class EngineTests
                 Check(log.Entries.Any(x => x.Event == "BankruptcyDeclared" && x.PlayerId == "a"), "Double-counted a mortgaged title as guaranteed liquidity.");
                 Check(final.Players.Single(p => p.Id == "a").IsBankrupt, "Assets or debt remained outside final liquidation.");
             }),
-            ("Auction proceeds can reverse bankruptcy and exceed fixed trade valuation", () =>
+            ("Auction proceeds can reverse bankruptcy and exceed reference valuation", () =>
             {
                 var options = Opt([1, 3]) with { StrategyFactory = (_, executor) => new Script(executor), MaximumRounds = 1 };
                 var log = new Recorder();
@@ -195,8 +195,9 @@ internal static class EngineTests
             ("A player may auction a package without declaring bankruptcy", () =>
             {
                 var log = new Recorder();
-                var options = Opt([1, 2]) with
+                var options = Opt([1, 2], [1, 2]) with
                 {
+                    MaximumRounds = 1,
                     StrategyFactory = (_, executor) => new Script(executor, (player, state, pre) =>
                     {
                         if (player.Id == "a" && pre)
@@ -208,7 +209,8 @@ internal static class EngineTests
                 };
                 var e = new MonoSimEngine([P("a", 0) with { OwnedPropertyIds = ["mediterranean-avenue", "baltic-avenue"] }, P("b", 500)], log, options);
                 var final = e.Play();
-                Check(log.Entries.FindIndex(x => x.Event == "AuctionCompleted") < log.Entries.FindIndex(x => x.Event == "BankruptcyDeclared"), "Required bankruptcy before a voluntary auction.");
+                var sale = log.Entries.FindIndex(x => x.Event == "AuctionCompleted");
+                Check(sale >= 0 && !log.Entries.Take(sale).Any(x => x.Event == "BankruptcyDeclared"), "Required bankruptcy before a voluntary auction.");
                 Check(final.Players.Single(p => p.Id == "b").OwnedPropertyIds.Length == 2, "The struck sale was rescinded.");
             }),
             ("Strategies must declare completion before any roll can begin", () =>

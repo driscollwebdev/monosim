@@ -89,12 +89,21 @@ public sealed class AggressiveStrategy(IStrategyActionExecutor executor) : IPlay
                 (a.Cost > 0 || a.Type == StrategyActionType.TradeProperties) &&
                 (!TradeValidator.IsTradeAction(a) || TradeValidator.ValidateAction(player, state, a).IsValid) &&
                 TradeSafetyAdvisor.ShouldConsiderAction(player, state, a) &&
-                (a.Type != StrategyActionType.TradeProperties || a.Trade!.PropertyIdsReceived.Length > a.Trade.PropertyIdsGiven.Length))
+                (a.Type != StrategyActionType.TradeProperties || HelpfulTrade(player, state, a.Trade!)))
             .OrderBy(Priority)
             .ThenByDescending(a => IsPurchase(a.Type) ? 0 : a.RentIncrease / a.Cost)
             .ThenBy(a => a.Cost)
             .ThenBy(a => a.Id, StringComparer.Ordinal)
             .FirstOrDefault();
+    }
+
+    private static bool HelpfulTrade(Player player, GameState state, PropertyTrade trade)
+    {
+        var before = player.OwnedPropertyIds.ToHashSet(StringComparer.Ordinal);
+        var after = before.Except(trade.PropertyIdsGiven).Concat(trade.PropertyIdsReceived).ToHashSet(StringComparer.Ordinal);
+        return StrategicTradeAdvisor.MonopolyProgress(state, after) > StrategicTradeAdvisor.MonopolyProgress(state, before) ||
+            state.Properties.Any(p => p.IsMortgaged && trade.PropertyIdsReceived.Contains(p.PropertyId)) ||
+            StrategicTradeAdvisor.FundsInvestment(player, state, trade, _ => true);
     }
 
     private static bool IsPurchase(StrategyActionType type) =>

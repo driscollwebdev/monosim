@@ -83,10 +83,6 @@ public static class TradeValidator
 
         var given = Value(trade.PropertyIdsGiven) + trade.CardIdsGiven.Length * state.GetOutOfJailFreeCardTradeValue + trade.CashPaid;
         var received = Value(trade.PropertyIdsReceived) + trade.CardIdsReceived.Length * state.GetOutOfJailFreeCardTradeValue + trade.CashReceived;
-        if (given != received)
-        {
-            errors.Add("Both sides must exchange exactly equal asset and cash values, excluding bank fees.");
-        }
 
         var expectedFees = MortgageFees(trade.PropertyIdsReceived);
         var expectedOtherFees = MortgageFees(trade.PropertyIdsGiven);

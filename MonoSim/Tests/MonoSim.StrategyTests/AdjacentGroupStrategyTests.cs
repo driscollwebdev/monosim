@@ -60,7 +60,7 @@ internal static class AdjacentGroupStrategyTests
             }),
             ("Leverage trades can acquire a target street", () =>
             {
-                var e = Run(500, 9, ["oriental-avenue", "kentucky-avenue"], [Trade(Deal(["kentucky-avenue"], ["st-charles-place"], receivedCash: 80))], ["st-charles-place"]);
+                var e = Run(500, 0, ["oriental-avenue", "kentucky-avenue"], [Trade(Deal(["kentucky-avenue"], ["st-charles-place"], receivedCash: 80))], ["st-charles-place"]);
                 Check(e.Player.OwnedPropertyIds.Contains("st-charles-place") && !e.Player.OwnedPropertyIds.Contains("kentucky-avenue"), "Did not use leverage for the target.");
             }),
             ("Neither target group can be traded away", () =>
@@ -140,22 +140,22 @@ internal static class AdjacentGroupStrategyTests
                 new AdjacentGroupStrategy(e).PostRoll(e.Player, e.State)();
                 Check(e.Executed.Count == 1, "Required contained infrastructure after fully improving both groups.");
             }),
-            ("Full improvement of just one group does not unlock expansion", () =>
+            ("Owning both target groups unlocks conservative mortgage trades before full development", () =>
             {
                 var option = Buy("mediterranean-avenue") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 33 };
                 var e = Engine(500, 1, Pair("lightBlue", "pink"), [option], ["mediterranean-avenue"]);
                 e.State = e.State with { Properties = e.State.Properties.Select(p => p.PropertyId == "mediterranean-avenue" ? p with { IsMortgaged = true } : p).ToArray() };
                 Hotels(e, "lightBlue");
                 new AdjacentGroupStrategy(e).PostRoll(e.Player, e.State)();
-                Check(e.Executed.Count == 0, "Expanded after developing only one group.");
+                Check(e.Executed.Count == 1, "Did not switch trading modes after owning both target groups.");
             }),
-            ("A pair without contained infrastructure can finish by hotel development", () =>
+            ("A pair without contained infrastructure permits bargain trades before hotel development", () =>
             {
                 var option = Buy("mediterranean-avenue") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 33 };
                 var e = Engine(500, 1, Pair("orange", "red"), [option], ["mediterranean-avenue"]);
                 e.State = e.State with { Properties = e.State.Properties.Select(p => p.PropertyId == "mediterranean-avenue" ? p with { IsMortgaged = true } : p).ToArray() };
                 new AdjacentGroupStrategy(e).PostRoll(e.Player, e.State)();
-                Check(e.Executed.Count == 0, "Expanded without either objective.");
+                Check(e.Executed.Count == 1, "Did not allow a bargain after acquiring the target groups.");
                 Hotels(e, "orange", "red");
                 new AdjacentGroupStrategy(e).PostRoll(e.Player, e.State)();
                 Check(e.Executed.Count == 1, "Could not complete a pair with no contained infrastructure.");

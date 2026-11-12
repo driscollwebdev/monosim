@@ -200,6 +200,32 @@ internal static class CliTests
                 Check(rows.Length == 13 && rows.All(r => r.Length == SimulationOutcome.Headers.Count));
                 Check(rows.Skip(1).Select(r => r[2]).Distinct().Count() == 12 && rows.Skip(1).All(r => r[4] == "completed"));
             }),
+            ("Turn order varies per simulation, reproduces by seed and preserves player identities", () =>
+            {
+                using var first = new Files();
+                using var second = new Files();
+                Dictionary<int, string> Capture(Files files)
+                {
+                    var orders = new System.Collections.Concurrent.ConcurrentDictionary<int, string>();
+                    var options = CliOptions.Parse(["4", "aggressive,conservative,infrastructure,novice", "-s", "12", "-r", "1", "--seed", "42"]);
+                    using var logging = new SimulationLogging(new() { RootDirectory = Path.Combine(files.Root, "logs"), ConsoleEnabled = false });
+                    using var results = files.Open();
+                    var runner = new SimulationBatchRunner((players, _, engineOptions) =>
+                    {
+                        Check(players.Select(p => p.Id).Order().SequenceEqual(["player-1", "player-2", "player-3", "player-4"]));
+                        Check(players.Single(p => p.Id == "player-1").Strategy == "aggressive" && players.Single(p => p.Id == "player-2").Strategy == "conservative");
+                        orders[engineOptions.RandomSeed!.Value] = string.Join(",", players.Select(p => p.Id));
+                        return Final(players, engineOptions);
+                    });
+                    var batch = runner.RunAsync(options, Definition, results, logging).GetAwaiter().GetResult();
+                    Check(batch.Completed == 12 && batch.Failed == 0);
+                    return orders.ToDictionary();
+                }
+                var a = Capture(first);
+                var b = Capture(second);
+                Check(a.Values.Distinct().Count() > 1 && a.All(pair => b[pair.Key] == pair.Value));
+                Check(first.Rows().Skip(1).All(row => row[20] == "aggressive" && row[25] == "conservative" && row[30] == "infrastructure" && row[35] == "novice"));
+            }),
             ("Real seeded parallel batches reproduce strategies and outcomes", () =>
             {
                 using var first = new Files();
@@ -214,6 +240,19 @@ internal static class CliTests
                 {
                     Check(File.Exists(row[19]) && Path.GetDirectoryName(row[19])!.EndsWith("monosim-" + row[2]));
                 }
+            }),
+            ("Mixed-strategy batch completes without trade sale and buyback cycles", () =>
+            {
+                using var files = new Files();
+                var options = CliOptions.Parse(["6", "aggressive,conservative,infrastructure,adjacent-group,blue-green,novice", "-r", "10", "--seed", "7961"]);
+                {
+                    using var logging = new SimulationLogging(new() { RootDirectory = Path.Combine(files.Root, "logs"), ConsoleEnabled = false });
+                    using var results = files.Open();
+                    using var cancelled = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                    var batch = new SimulationBatchRunner().RunAsync(options, Definition, results, logging, cancelled.Token).GetAwaiter().GetResult();
+                    Check(batch.Completed == 1 && batch.Failed == 0);
+                }
+                Check(files.Rows().Length == 2 && files.Rows()[1][4] == "completed");
             }),
             ("Continue records failed rows with quoted errors and runs remaining games", () =>
             {

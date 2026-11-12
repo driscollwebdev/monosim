@@ -109,12 +109,14 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
         }
 
         var options = state.AvailableActions.Where(a => a.Cost <= player.CashBalance &&
-            (!TradeValidator.IsTradeAction(a) || TradeValidator.ValidateAction(player, state, a).IsValid)).ToArray();
+            (!TradeValidator.IsTradeAction(a) || TradeValidator.ValidateAction(player, state, a).IsValid &&
+                TradeSafetyAdvisor.ShouldConsiderAction(player, state, a))).ToArray();
+        var fallback = FlipAction(player, state, plan, options);
         var target = plan.TargetGroup;
         if (target is null)
         {
             return Ordered(options.Where(a => a.Type == StrategyActionType.BuyProperty && a.Cost > 0 &&
-                FindProperty(state, a.PropertyId) is { IsAvailable: true, ColorGroup: not null })).FirstOrDefault();
+                FindProperty(state, a.PropertyId) is { IsAvailable: true, ColorGroup: not null })).FirstOrDefault() ?? fallback;
         }
 
         var group = state.Properties.Where(p => p.ColorGroup == target).ToArray();
@@ -128,7 +130,7 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
         if (IsFullyDeveloped(player, state, target))
         {
             return Ordered(options.Where(a => a.Type == StrategyActionType.BuyProperty && a.Cost > 0 &&
-                FindProperty(state, a.PropertyId) is { IsAvailable: true, ColorGroup: not null } p && p.ColorGroup != target)).FirstOrDefault();
+                FindProperty(state, a.PropertyId) is { IsAvailable: true, ColorGroup: not null } p && p.ColorGroup != target)).FirstOrDefault() ?? fallback;
         }
         if (!complete)
         {
@@ -149,7 +151,7 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
             }
 
             return Ordered(options.Where(a => a.Type == StrategyActionType.BuyProperty && a.Cost > 0 &&
-                IsTradeSetup(player, state, target, a))).FirstOrDefault();
+                IsTradeSetup(player, state, target, a))).FirstOrDefault() ?? fallback;
         }
 
         var redemption = Ordered(options.Where(a => a.Type == StrategyActionType.UnmortgageProperty && a.Cost > 0 &&
@@ -162,7 +164,7 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
 
         if (plan.LastUpgradeTurn == state.TurnNumber || group.Any(p => p.IsMortgaged))
         {
-            return null;
+            return fallback;
         }
 
         return options.Where(a => a.Type is StrategyActionType.BuildHouse or StrategyActionType.BuildHotel &&
@@ -171,7 +173,37 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
             .OrderBy(a => FindProperty(state, a.PropertyId)!.HouseCount)
             .ThenBy(a => a.Cost)
             .ThenBy(a => a.Id, StringComparer.Ordinal)
-            .FirstOrDefault();
+            .FirstOrDefault() ?? fallback;
+    }
+
+    private static StrategyAction? FlipAction(Player player, GameState state, DecisionMemory plan, StrategyAction[] options)
+    {
+        var owned = player.OwnedPropertyIds.ToHashSet(StringComparer.Ordinal);
+        var earned = player.CashBalance - plan.OpeningCash;
+        var redemption = Ordered(options.Where(a => a.Type == StrategyActionType.UnmortgageProperty && a.Cost > 0 && a.Cost <= earned && owned.Contains(a.PropertyId ?? ""))).FirstOrDefault();
+        if (redemption is not null)
+        {
+            return redemption;
+        }
+        if (plan.LastUpgradeTurn != state.TurnNumber)
+        {
+            var upgrade = Ordered(options.Where(a => a.Type is StrategyActionType.BuildHouse or StrategyActionType.BuildHotel && a.Cost > 0 && a.Cost <= earned &&
+                FindProperty(state, a.PropertyId) is { ColorGroup: not null } property &&
+                state.Properties.Where(p => p.ColorGroup == property.ColorGroup).All(p => owned.Contains(p.PropertyId) && !p.IsMortgaged))).FirstOrDefault();
+            if (upgrade is not null)
+            {
+                return upgrade;
+            }
+        }
+        var mortgage = Ordered(options.Where(a => a.Type == StrategyActionType.BuyMortgagedProperty && a.Cost > 0 &&
+            FindProperty(state, a.PropertyId) is { IsMortgaged: true } property &&
+            a.Cost <= property.MortgageValue * (1 + state.MortgageInterestRate))).FirstOrDefault();
+        if (mortgage is not null)
+        {
+            return mortgage;
+        }
+        return Ordered(options.Where(a => a.Type == StrategyActionType.TradeProperties && a.Trade is not null && a.Cost < 0 &&
+            StrategicTradeAdvisor.FundsInvestment(player, state, a.Trade, p => p.Type == PropertyType.Street))).FirstOrDefault();
     }
 
     private static bool IsTradeSetup(Player player, GameState state, string target, StrategyAction action)
@@ -206,7 +238,14 @@ public sealed class ConservativeStrategy(IStrategyActionExecutor executor) : IPl
         {
             return false;
         }
-        if (TradeSafetyAdvisor.Assess(player with { OwnedPropertyIds = owned.ToArray() }, state, trade).ShouldAvoid)
+        var receivedValue = state.Properties.Where(p => trade.PropertyIdsReceived.Contains(p.PropertyId)).Sum(p => TradeValidator.PropertyValue(p, state.BuildingResaleFraction));
+        var givenValue = state.Properties.Where(p => trade.PropertyIdsGiven.Contains(p.PropertyId)).Sum(p => TradeValidator.PropertyValue(p, state.BuildingResaleFraction));
+        if (trade.CashPaid - trade.CashReceived > Math.Max(0, receivedValue - givenValue))
+        {
+            return false;
+        }
+        if (TradeSafetyAdvisor.Assess(player with { OwnedPropertyIds = owned.ToArray() }, state, trade).ShouldAvoid ||
+            StrategicTradeAdvisor.AvoidsTransfer(player with { OwnedPropertyIds = owned.ToArray() }, state, trade))
         {
             return false;
         }

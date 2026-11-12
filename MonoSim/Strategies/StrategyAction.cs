@@ -29,6 +29,9 @@ public sealed record StrategyAction
     /// <summary>The accepted exchange executed by a TradeProperties action.</summary>
     public PropertyTrade? Trade { get; init; }
 
+    /// <summary>Opening offer and counters in the acting player's perspective; final terms match Trade.</summary>
+    public PropertyTrade[] NegotiationHistory { get; init; } = [];
+
     public string? TradeOfferId { get; init; }
 
     /// <summary>

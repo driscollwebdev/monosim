@@ -46,7 +46,7 @@ internal static class ConservativeStrategyTests
                 var trade = new PropertyTrade { OtherPlayerId = "other", PropertyIdsReceived = ["blue2"], CashPaid = 150 };
                 var engine = Engine(["blue1"], [Trade(trade)], ["blue2"]);
                 new ConservativeStrategy(engine).PostRoll(engine.Player, engine.State)();
-                Check(engine.Executed.Count == 0, "Accepted an unbalanced trade.");
+                Check(engine.Executed.Count == 0, "Paid more than reference value for the target property.");
             }),
             ("A last available property is bought only for a concrete mutually helpful trade", () =>
             {

@@ -274,7 +274,7 @@
       "type": "object",
       "properties": {
         "participantCount": { "const": 2 },
-        "requireEqualValue": { "const": true },
+        "requireEqualValue": { "const": false },
         "allowSameTurnThirdPartyPropertyTransfers": { "const": false },
         "allowFutureConsideration": { "const": false },
         "allowImprovedProperties": { "const": true },

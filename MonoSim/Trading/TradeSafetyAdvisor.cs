@@ -63,7 +63,8 @@ public static class TradeSafetyAdvisor
         {
             return false;
         }
-        return !Assess(player, state, TradeValidator.TermsForAction(player, state, action)!).ShouldAvoid;
+        var trade = TradeValidator.TermsForAction(player, state, action)!;
+        return !Assess(player, state, trade).ShouldAvoid && !StrategicTradeAdvisor.AvoidsTransfer(player, state, trade);
     }
 
     public static decimal DebtDue(Player player, GameState state) =>

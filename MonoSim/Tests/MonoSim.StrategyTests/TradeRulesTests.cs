@@ -14,7 +14,7 @@ internal static class TradeRulesTests
             {
                 var e = Engine(1000, 1, ["mediterranean-avenue"], [], ["oriental-avenue"]);
                 Valid(e.Player, e.State, Deal(["mediterranean-avenue"], ["oriental-avenue"], paid: 40));
-                Invalid(e.Player, e.State, Deal(["mediterranean-avenue"], ["oriental-avenue"], paid: 39));
+                Valid(e.Player, e.State, Deal(["mediterranean-avenue"], ["oriental-avenue"], paid: 39));
             }),
             ("Unimproved streets, railroads, and utilities use their face prices", () =>
             {
@@ -29,7 +29,7 @@ internal static class TradeRulesTests
                 var e = Engine(1000, 1, [p.PropertyId], []);
                 e.State = Replace(e.State, p);
                 Valid(e.Player, e.State, Deal([p.PropertyId], [], receivedCash: 110));
-                Invalid(e.Player, e.State, Deal([p.PropertyId], [], receivedCash: 60));
+                Valid(e.Player, e.State, Deal([p.PropertyId], [], receivedCash: 60));
             }),
             ("Hotel value includes four exchanged houses and the hotel upgrade", () =>
             {
@@ -47,13 +47,17 @@ internal static class TradeRulesTests
                 Invalid(e.Player, e.State, deal with { OtherPlayerBankFees = 0 });
                 Invalid(e.Player, e.State, deal with { BankFees = 0 });
             }),
-            ("Mortgage purchase actions cannot bypass equal-value pricing", () =>
+            ("Mortgage purchase actions require cost-matched negotiated terms", () =>
             {
                 var e = Engine(1000, 6, [], [], ["oriental-avenue"]);
                 e.State = Replace(e.State, Property("oriental-avenue") with { IsOwned = true, IsMortgaged = true });
                 var action = Buy("oriental-avenue") with { Type = StrategyActionType.BuyMortgagedProperty, Cost = 55 };
                 Check(TradeValidator.ValidateAction(e.Player, e.State, action).IsValid, "Expected 50 principal plus 5 bank interest.");
-                Check(!TradeValidator.ValidateAction(e.Player, e.State, action with { Cost = 100 }).IsValid, "An overpriced mortgage purchase bypassed the rule.");
+                Check(!TradeValidator.ValidateAction(e.Player, e.State, action with { Cost = 100 }).IsValid, "A cost inconsistent with its terms was accepted.");
+                Check(TradeValidator.ValidateAction(e.Player, e.State, action with
+                {
+                    Cost = 105, Trade = Deal([], ["oriental-avenue"], paid: 100, fees: 5)
+                }).IsValid, "Explicit negotiated prices should be legal when action cost and fees match.");
             }),
             ("A jail-free card is worth 50 and may be traded for cash alone", () =>
             {
@@ -61,7 +65,7 @@ internal static class TradeRulesTests
                 e.Player = e.Player with { HeldGetOutOfJailFreeCardIds = ["chance-jail-free"] };
                 var deal = Deal([], [], receivedCash: 50) with { CardIdsGiven = ["chance-jail-free"] };
                 Valid(e.Player, e.State, deal);
-                Invalid(e.Player, e.State, deal with { CashReceived = 49 });
+                Valid(e.Player, e.State, deal with { CashReceived = 49 });
             }),
             ("A mixed card property and cash exchange transfers held cards", () =>
             {

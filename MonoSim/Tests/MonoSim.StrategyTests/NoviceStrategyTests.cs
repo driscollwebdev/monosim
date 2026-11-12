@@ -166,7 +166,7 @@ internal static class NoviceStrategyTests
                 Check(novice.AcceptTrade(e.Player, e.State, reordered) && random.Calls == 1);
                 e.State = e.State with { RollNumber = e.State.RollNumber + 1 };
                 Check(novice.AcceptTrade(e.Player, e.State, trade) && random.Calls == 2);
-                Check(!novice.AcceptTrade(e.Player, e.State, trade with { CashPaid = trade.CashPaid + 1 }) && random.Calls == 2);
+                Check(!novice.AcceptTrade(e.Player, e.State, trade with { BankFees = -1 }) && random.Calls == 2);
             }),
             ("Multiple monopolies use highest pair distance and union of opposing targets", () =>
             {
@@ -187,12 +187,12 @@ internal static class NoviceStrategyTests
                 var e = Engine(500, 0, ["mediterranean-avenue", "baltic-avenue", "electric-company"], [], ["water-works"]);
                 Check(!new NoviceStrategy(e).AcceptTrade(e.Player, e.State, Deal(["electric-company"], [], receivedCash: 150)));
             }),
-            ("Accepts balanced trades without monopoly completion and rejects unbalanced ones", () =>
+            ("Existing novice acceptance policy also applies to newly legal unequal trades", () =>
             {
                 var e = Engine(500, 0, ["mediterranean-avenue"], [], ["oriental-avenue"]);
                 var novice = new NoviceStrategy(e);
                 Check(novice.AcceptTrade(e.Player, e.State, Deal(["mediterranean-avenue"], ["oriental-avenue"], paid: 40)));
-                Check(!novice.AcceptTrade(e.Player, e.State, Deal(["mediterranean-avenue"], ["oriental-avenue"])));
+                Check(novice.AcceptTrade(e.Player, e.State, Deal(["mediterranean-avenue"], ["oriental-avenue"])));
             }),
             ("Waits to build until another player is within dice reach", () =>
             {

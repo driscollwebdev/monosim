@@ -81,7 +81,7 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
                 return policy;
             }
             return null;
-        });
+        }, options.TradeNegotiation);
         order = players.Select(p => p.Id).ToArray();
         foreach (var property in definition.Properties)
         {
@@ -222,6 +222,7 @@ public sealed partial class MonoSimEngine : IStrategyActionExecutor, IPlayerTurn
         rollNumber = 0;
         phase = TurnPhase.PreRoll;
         completedTrades.Clear();
+        loggedNegotiations.Clear();
         if (offers.Count > 0)
         {
             Log("TradeOffersExpired", id, $"{offers.Count} offers expired at the previous turn boundary.");
